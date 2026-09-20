@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "analysisId": "AN-MOCK-QUERY",
+  "target": "orders-api",
+  "window": {"startTime": "2026-09-20T10:00:00Z", "endTime": "2026-09-20T10:10:00Z"},
+  "status": "critical",
+  "summary": "Mock / illustrative evidence shows a query-efficiency regression after a deployment marker.",
+  "sections": [{
+    "id": "query-efficiency-regression",
+    "category": "database_query",
+    "title": "Query Efficiency Regression",
+    "facts": [
+      {"text": "Request p95 increased from 200 ms to 1000 ms (400%).", "evidenceIds": ["E2"], "deterministicFindingIds": ["D1"]},
+      {"text": "The scan ratio increased from 20:1 to 4000:1.", "evidenceIds": ["E3", "E4"], "deterministicFindingIds": ["D2"]},
+      {"text": "The observed plan changed from IXSCAN to COLLSCAN.", "evidenceIds": ["E5"], "deterministicFindingIds": ["D3"]}
+    ],
+    "hypothesis": {"text": "Hypothesis: the changed query shape may no longer use the existing index effectively.", "confidence": "medium", "supportingEvidenceIds": ["E1", "E2", "E3", "E4", "E5"], "contradictingEvidenceIds": []},
+    "recommendedChecks": ["Compare the query shape before and after the deployment.", "Run explain('executionStats') against a safe representative query."],
+    "limitations": ["Mock / illustrative data does not prove deployment causation."],
+    "verification": [
+      {"system": "prometheus", "label": "Request p95", "query": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service=\"orders-api\"}[5m])))"},
+      {"system": "loki", "label": "Plan summaries", "query": "{service=\"mongodb\"} |= \"planSummary\""}
+    ],
+    "charts": [{"id": "latency", "title": "Mock request p95", "type": "bar", "unit": "ms", "series": [{"label": "before", "value": 200}, {"label": "after", "value": 1000}]}]
+  }],
+  "limitations": ["All values are mock / illustrative; replace mock adapters for production evidence."]
+}

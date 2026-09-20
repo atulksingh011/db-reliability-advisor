@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://db-reliability-advisor.local/contracts/contract-a-analysis-request.schema.json",
+  "title": "Contract A - Analysis Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target", "startTime", "endTime"],
+  "properties": {
+    "target": {"type": "string", "minLength": 1},
+    "startTime": {"type": "string", "format": "date-time"},
+    "endTime": {"type": "string", "format": "date-time"}
+  },
+  "$comment": "startTime < endTime and the configurable maximum window are runtime invariants enforced by the AnalysisRequest model."
+}

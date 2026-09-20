@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "analysisId": "AN-MOCK-CONNECTION",
+  "target": "orders-api",
+  "window": {"startTime": "2026-09-20T11:00:00Z", "endTime": "2026-09-20T11:10:00Z"},
+  "status": "critical",
+  "summary": "Mock / illustrative evidence supports connection pressure more strongly than a query/index regression.",
+  "sections": [{
+    "id": "connection-pressure",
+    "category": "database_connections",
+    "title": "Connection Pressure",
+    "facts": [
+      {"text": "Connection utilization increased from 25% to 92% and mock connection failures were present.", "evidenceIds": ["E1", "E4"], "deterministicFindingIds": ["D1"]},
+      {"text": "Request p95 increased from 220 ms to 1100 ms (400%).", "evidenceIds": ["E2"], "deterministicFindingIds": ["D2"]},
+      {"text": "The query plan remained IXSCAN and scan efficiency stayed approximately stable.", "evidenceIds": ["E5", "E6"], "deterministicFindingIds": ["D3"]}
+    ],
+    "hypothesis": {"text": "Hypothesis: connection saturation is a better-supported explanation than a query/index regression.", "confidence": "high", "supportingEvidenceIds": ["E1", "E2", "E3", "E4"], "contradictingEvidenceIds": ["E5", "E6"]},
+    "recommendedChecks": ["Inspect client pool sizing and checkout wait time.", "Correlate connection failures with the latency window."],
+    "limitations": ["Mock / illustrative data cannot identify which client exhausted connections."],
+    "verification": [
+      {"system": "prometheus", "label": "MongoDB connections", "query": "mongodb_ss_connections{conn_type=\"current\"} / mongodb_ss_connections{conn_type=\"available\"}"},
+      {"system": "loki", "label": "Connection failures", "query": "{service=\"mongodb\"} |~ \"connection.*(failed|refused|timeout)\""}
+    ],
+    "charts": [{"id": "connections", "title": "Mock connection utilization", "type": "bar", "unit": "percent", "series": [{"label": "before", "value": 25}, {"label": "after", "value": 92}]}]
+  }],
+  "limitations": ["All values are mock / illustrative; replace mock adapters for production evidence."]
+}

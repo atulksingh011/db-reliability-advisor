@@ -1,0 +1,6 @@
+{
+  "analysisId": "AN-MOCK-QUERY",
+  "findingId": "query-efficiency-regression",
+  "verdict": "correct",
+  "comment": "Mock / illustrative feedback for contract validation."
+}

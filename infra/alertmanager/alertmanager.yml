@@ -1,0 +1,11 @@
+route:
+  receiver: analysis-service-development
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 4h
+
+receivers:
+  - name: analysis-service-development
+    webhook_configs:
+      - url: http://analysis-service:8000/api/v1/dev/mock/alertmanager
+        send_resolved: false

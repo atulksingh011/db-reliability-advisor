@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://db-reliability-advisor.local/contracts/contract-b-analysis-package.schema.json",
+  "title": "Contract B - Analysis Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "analysisId", "target", "window", "evidence", "deterministicFindings", "missingEvidence"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "analysisId": {"type": "string", "pattern": "^AN-[A-Za-z0-9-]+$"},
+    "target": {"type": "string", "minLength": 1},
+    "window": {"$ref": "#/$defs/window"},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "deterministicFindings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "missingEvidence": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startTime", "endTime"],
+      "properties": {
+        "startTime": {"type": "string", "format": "date-time"},
+        "endTime": {"type": "string", "format": "date-time"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system"],
+      "properties": {
+        "system": {"enum": ["prometheus", "loki", "mongodb", "mock"]},
+        "query": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "value", "source"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^E[0-9]+$"},
+        "kind": {"enum": ["event", "metric_comparison", "metric_window", "query_comparison", "query_window", "query_plan", "metadata"]},
+        "name": {"type": "string", "minLength": 1},
+        "value": {},
+        "source": {"$ref": "#/$defs/source"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "rule", "result", "evidenceIds"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^D[0-9]+$"},
+        "rule": {"type": "string", "minLength": 1},
+        "result": {},
+        "evidenceIds": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]+$"}, "minItems": 1, "uniqueItems": true}
+      }
+    }
+  }
+}

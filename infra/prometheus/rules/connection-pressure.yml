@@ -1,0 +1,12 @@
+groups:
+  - name: database-reliability-demo
+    rules:
+      - alert: MongoConnectionPressure
+        expr: mongodb_ss_connections{conn_type="current"} / (mongodb_ss_connections{conn_type="current"} + mongodb_ss_connections{conn_type="available"}) > 0.90
+        for: 1m
+        labels:
+          severity: warning
+          target: orders-api
+        annotations:
+          summary: MongoDB connection utilization is above 90 percent
+          description: Foundation demo rule; DBADV-01 must verify metric names for the pinned exporter.

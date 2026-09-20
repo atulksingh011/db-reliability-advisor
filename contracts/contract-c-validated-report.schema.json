@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://db-reliability-advisor.local/contracts/contract-c-validated-report.schema.json",
+  "title": "Contract C - Validated Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "analysisId", "target", "window", "status", "summary", "sections", "limitations"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "analysisId": {"type": "string", "pattern": "^AN-[A-Za-z0-9-]+$"},
+    "target": {"type": "string", "minLength": 1},
+    "window": {"$ref": "#/$defs/window"},
+    "status": {"enum": ["healthy", "warning", "critical", "insufficient_data", "failed"]},
+    "summary": {"type": "string", "minLength": 1},
+    "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startTime", "endTime"],
+      "properties": {
+        "startTime": {"type": "string", "format": "date-time"},
+        "endTime": {"type": "string", "format": "date-time"}
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "evidenceIds", "deterministicFindingIds"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "evidenceIds": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]+$"}, "uniqueItems": true},
+        "deterministicFindingIds": {"type": "array", "items": {"type": "string", "pattern": "^D[0-9]+$"}, "uniqueItems": true}
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "confidence", "supportingEvidenceIds", "contradictingEvidenceIds"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["low", "medium", "high"]},
+        "supportingEvidenceIds": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]+$"}, "uniqueItems": true},
+        "contradictingEvidenceIds": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]+$"}, "uniqueItems": true}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "query"],
+      "properties": {
+        "system": {"enum": ["prometheus", "loki"]},
+        "query": {"type": "string", "minLength": 1},
+        "label": {"type": "string"}
+      }
+    },
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "type", "series"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "type": {"enum": ["bar", "line"]},
+        "unit": {"type": "string"},
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value"],
+            "properties": {"label": {"type": "string"}, "value": {"type": "number"}}
+          }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "title", "facts", "hypothesis", "recommendedChecks", "limitations", "verification", "charts"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
+        "hypothesis": {"$ref": "#/$defs/hypothesis"},
+        "recommendedChecks": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "array", "items": {"type": "string"}},
+        "verification": {"type": "array", "items": {"$ref": "#/$defs/verification"}},
+        "charts": {"type": "array", "items": {"$ref": "#/$defs/chart"}}
+      }
+    }
+  }
+}

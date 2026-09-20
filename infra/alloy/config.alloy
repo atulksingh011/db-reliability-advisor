@@ -1,0 +1,21 @@
+logging {
+  level = "info"
+}
+local.file_match "mongodb" {
+  path_targets = [{
+    __path__ = "/var/log/mongodb/mongod.log",
+    service  = "mongodb",
+    source   = "diagnostic-log",
+  }]
+}
+
+loki.source.file "mongodb" {
+  targets    = local.file_match.mongodb.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

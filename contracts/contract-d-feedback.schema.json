@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://db-reliability-advisor.local/contracts/contract-d-feedback.schema.json",
+  "title": "Contract D - Feedback",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["analysisId", "verdict"],
+  "properties": {
+    "analysisId": {"type": "string", "pattern": "^AN-[A-Za-z0-9-]+$"},
+    "findingId": {"type": "string", "minLength": 1},
+    "verdict": {"enum": ["correct", "partially_correct", "incorrect"]},
+    "comment": {"type": "string"}
+  }
+}

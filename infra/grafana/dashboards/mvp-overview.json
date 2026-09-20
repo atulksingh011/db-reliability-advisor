@@ -1,0 +1,43 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Scrape targets up",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(up)", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders API request rate",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(rate(orders_api_requests_total[5m]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "type": "logs",
+      "title": "MongoDB diagnostic logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{service=\"mongodb\"}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "MongoDB exporter",
+      "description": "Shows whether Prometheus can scrape the pinned Percona exporter.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "up{job=\"mongodb-exporter\"}", "refId": "A"}],
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 8}
+    }
+  ],
+  "schemaVersion": 40,
+  "tags": ["mock", "foundation"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "MVP Overview",
+  "uid": "dbadv-mvp-overview",
+  "version": 1
+}
