@@ -4,10 +4,10 @@
   "target": "orders-api",
   "window": {"startTime": "2026-09-20T11:00:00Z", "endTime": "2026-09-20T11:10:00Z"},
   "evidence": [
-    {"id": "E1", "kind": "metric_comparison", "name": "connection_utilization_percent", "value": {"before": 25, "after": 92, "unit": "percent", "mock": true}, "source": {"system": "mock", "query": "illustrative mongodb connection utilization query"}},
+    {"id": "E1", "kind": "metric_comparison", "name": "connection_utilization_percent", "value": {"before": 25, "after": 92, "unit": "percent", "mock": true}, "unit": "percent", "source": {"system": "mock", "query": "illustrative mongodb connection utilization query"}, "observationWindow": {"startTime": "2026-09-20T11:00:00Z", "endTime": "2026-09-20T11:10:00Z"}},
     {"id": "E2", "kind": "metric_comparison", "name": "request_p95_ms", "value": {"before": 220, "after": 1100, "unit": "ms", "mock": true}, "source": {"system": "mock", "query": "illustrative histogram_quantile query"}},
     {"id": "E3", "kind": "metric_comparison", "name": "request_error_rate_percent", "value": {"before": 0, "after": 8, "unit": "percent", "mock": true}, "source": {"system": "mock", "query": "illustrative error-rate query"}},
-    {"id": "E4", "kind": "event", "name": "connection_failures", "value": {"present": true, "count": 14, "mock": true}, "source": {"system": "mock", "query": "illustrative Loki connection-failure query"}},
+    {"id": "E4", "kind": "event", "name": "connection_failures", "value": {"present": true, "count": 14, "mock": true}, "source": {"system": "mock", "query": "illustrative Loki connection-failure query"}, "timestamp": "2026-09-20T11:05:00Z"},
     {"id": "E5", "kind": "query_plan", "name": "query_plan", "value": {"before": "IXSCAN", "after": "IXSCAN", "mock": true}, "source": {"system": "mock", "query": "illustrative plan-summary comparison"}},
     {"id": "E6", "kind": "query_comparison", "name": "scan_ratio", "value": {"before": 20, "after": 21, "mock": true}, "source": {"system": "mock", "query": "illustrative scan-efficiency comparison"}}
   ],

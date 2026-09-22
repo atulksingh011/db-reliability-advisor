@@ -35,6 +35,11 @@ class EvidenceSource(ContractModel):
     query: str | None = None
 
 
+class EvidenceObservationWindow(ContractModel):
+    start_time: datetime
+    end_time: datetime
+
+
 EvidenceKind = Literal[
     "event",
     "metric_comparison",
@@ -51,7 +56,10 @@ class Evidence(ContractModel):
     kind: EvidenceKind
     name: str
     value: Any
+    unit: str | None = None
     source: EvidenceSource
+    observation_window: EvidenceObservationWindow | None = None
+    timestamp: datetime | None = None
 
 
 class DeterministicFinding(ContractModel):

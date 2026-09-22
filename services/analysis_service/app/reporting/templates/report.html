@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.target }} reliability report</title>
+  <style>
+    body{font:16px/1.55 system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;color:#17202a;background:#f5f7fa}
+    header,.card{background:white;padding:1.25rem;margin:1rem 0;border:1px solid #dce2e8;border-radius:10px}
+    .status{font-weight:700;text-transform:uppercase}.facts{padding-left:1.25rem}code{overflow-wrap:anywhere}
+    table{border-collapse:collapse;width:100%;margin:.75rem 0}th,td{text-align:left;padding:.5rem;border-bottom:1px solid #dce2e8}
+    label{display:block;margin:.5rem 0}button{padding:.6rem 1rem}small{color:#52606d}
+  </style>
+</head>
+<body>
+  <p><a href="/">← Recent reports</a></p>
+  <header>
+    <h1>{{ report.target }} reliability report</h1>
+    <p class="status">{{ report.status }}</p>
+    <p>Analysis window: {{ report.window.startTime }} — {{ report.window.endTime }}</p>
+    <h2>Quick summary</h2><p>{{ report.summary }}</p>
+  </header>
+  {% for section in report.sections %}
+  <section class="card">
+    <h2>{{ section.title }}</h2>
+    <small>Category: {{ section.category }}</small>
+    <h3>Observed facts</h3>
+    <ul class="facts">{% for fact in section.facts %}<li>{{ fact.text }} <small>Evidence: {{ fact.evidenceIds|join(', ') }}{% if fact.deterministicFindingIds %}; findings: {{ fact.deterministicFindingIds|join(', ') }}{% endif %}</small></li>{% endfor %}</ul>
+    <h3>Hypothesis</h3>
+    <p>{{ section.hypothesis.text }} <strong>Confidence: {{ section.hypothesis.confidence }}</strong></p>
+    <p>Supporting evidence: {{ section.hypothesis.supportingEvidenceIds|join(', ') or 'None cited' }}</p>
+    <p>Contradicting evidence: {{ section.hypothesis.contradictingEvidenceIds|join(', ') or 'None cited' }}</p>
+    {% if section.charts %}<h3>Deterministic comparison</h3>{% for chart in section.charts %}<h4>{{ chart.title }}</h4><table><thead><tr><th>Period</th><th>Value{% if chart.unit %} ({{ chart.unit }}){% endif %}</th></tr></thead><tbody>{% for point in chart.series %}<tr><td>{{ point.label }}</td><td>{{ point.value }}</td></tr>{% endfor %}</tbody></table>{% endfor %}{% endif %}
+    <h3>Recommended checks</h3><ul>{% for check in section.recommendedChecks %}<li>{{ check }}</li>{% endfor %}</ul>
+    <h3>Limitations</h3><ul>{% for item in section.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
+    <h3>Verification queries</h3><ul>{% for item in section.verification %}<li>{{ item.label or item.system }}: <code>{{ item.query }}</code></li>{% endfor %}</ul>
+  </section>
+  {% endfor %}
+  <section class="card"><h2>Report limitations</h2><ul>{% for item in report.limitations %}<li>{{ item }}</li>{% endfor %}</ul></section>
+  <section class="card">
+    <h2>Feedback</h2>
+    <form method="post" action="/api/v1/analyses/{{ report.analysisId }}/feedback">
+      <input type="hidden" name="analysisId" value="{{ report.analysisId }}">
+      <label><input type="radio" name="verdict" value="correct" required> Correct</label>
+      <label><input type="radio" name="verdict" value="partially_correct"> Partially correct</label>
+      <label><input type="radio" name="verdict" value="incorrect"> Incorrect</label>
+      <label for="comment">Optional comment</label><textarea id="comment" name="comment" rows="4" maxlength="4000"></textarea>
+      <button type="submit">Submit feedback</button>
+    </form>
+  </section>
+</body>
+</html>

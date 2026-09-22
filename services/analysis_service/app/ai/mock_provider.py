@@ -75,8 +75,8 @@ class MockAIProvider(AIProvider):
                         ),
                         VerificationQuery(
                             system="loki",
-                            label="Plan summaries",
-                            query='{service="mongodb"} |= "planSummary"',
+                            label="MongoDB diagnostic logs",
+                            query='{service="mongodb"}',
                         ),
                     ],
                     charts=[
@@ -154,16 +154,17 @@ class MockAIProvider(AIProvider):
                     verification=[
                         VerificationQuery(
                             system="prometheus",
-                            label="MongoDB connections",
+                            label="MongoDB connection utilization",
                             query=(
-                                'mongodb_ss_connections{conn_type="current"} / '
-                                'mongodb_ss_connections{conn_type="available"}'
+                                '100 * sum(mongodb_ss_connections{conn_type="current"}) / '
+                                '(sum(mongodb_ss_connections{conn_type="current"}) + '
+                                'sum(mongodb_ss_connections{conn_type="available"}))'
                             ),
                         ),
                         VerificationQuery(
                             system="loki",
-                            label="Connection failures",
-                            query=('{service="mongodb"} |~ "connection.*(failed|refused|timeout)"'),
+                            label="MongoDB diagnostic logs",
+                            query='{service="mongodb"}',
                         ),
                     ],
                     charts=[

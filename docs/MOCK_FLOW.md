@@ -1,26 +1,25 @@
 # Mock flow
 
-Every value described here is mock / illustrative.
+All fixture values are explicitly mock/illustrative and are not production telemetry. `make demo-query` and `make demo-connection` select fixtures only in `APP_ENV=development`; both execute the exact same runtime path:
 
-## Query regression
+```text
+Contract A -> AnalysisPipeline -> MockAdapter -> EvidenceBuilder
+-> DeterministicAnalyzer -> Contract B -> MockAIProvider -> Validator
+-> Contract C -> Jinja2 HTML report -> Contract D feedback -> FeedbackRepository
+```
 
-`make demo-query` posts to a development-only selector. It creates the ordinary three-field Contract A request, loads mock evidence through `MockAdapter`, builds Contract B, and computes:
+The only variable is fixture evidence (or, later, the trigger). Contract A remains the same three-field request. Demo windows are relative to the current time; the mock adapter maps fixture observations to that requested window for display while preserving their illustrative nature.
 
-- request p95: 200 ms → 1000 ms (400% increase)
-- documents examined: 1,000 → 200,000
-- documents returned: 50 → 50
-- scan ratio: 20:1 → 4000:1
-- plan: IXSCAN → COLLSCAN
+## Scenario A — query regression
 
-The mock provider labels the changed-query explanation as a hypothesis. The validator checks every `E*` and `D*` citation, Contract C is persisted, and the UI can submit Contract D feedback.
+- Request p95: 200 ms → 1000 ms; examined documents: 1,000 → 200,000; returned: 50 → 50.
+- Scan ratio: 20:1 → 4000:1; plan: IXSCAN → COLLSCAN.
+- The provider frames the changed-query explanation as a hypothesis, cites Contract B IDs and generates no HTML.
 
-## Connection pressure
+## Scenario B — connection pressure
 
-`make demo-connection` enters the same `AnalysisPipeline` with another development fixture:
+- Connection utilization: 25% → 92%; request p95: 220 ms → 1100 ms; mock errors/failures rise.
+- Contradicting evidence for query/index regression is structured: `E5` keeps the plan at IXSCAN, and `E6` shows scan ratio moving only 20 → 21. Both IDs appear in `contradictingEvidenceIds`.
+- The report shows supporting and contradicting evidence separately. The development Alertmanager hook also enters this same pipeline and Contract A shape.
 
-- connection utilization: 25% → 92%
-- request p95: 220 ms → 1100 ms
-- error rate: 0% → 8%; connection failures are present
-- plan: IXSCAN → IXSCAN; scan efficiency is approximately stable
-
-The resulting hypothesis says connection pressure is better supported than a query/index regression. No alternate application architecture exists for this scenario. The Alertmanager development webhook also maps to this same three-field request and pipeline.
+Analysis audit writes happen alongside, not in front of, AI: SQLite does not supply the live Contract B to the provider. Feedback uses a distinct repository boundary and Contract D.

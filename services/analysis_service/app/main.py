@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
 from .adapters.mock import MockAdapter
@@ -9,6 +8,7 @@ from .api import analyses, feedback, health
 from .config import Settings, get_settings
 from .orchestration.pipeline import AnalysisPipeline
 from .storage.database import create_database_engine, initialize_database
+from .storage.feedback_repository import FeedbackRepository
 from .storage.repository import AnalysisRepository
 
 
@@ -19,6 +19,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     engine = create_database_engine(runtime_settings.database_url)
     initialize_database(engine)
     repository = AnalysisRepository(engine)
+    feedback_repository = FeedbackRepository(engine)
     provider = (
         GeminiAIProvider(runtime_settings.gemini_api_key, runtime_settings.gemini_model)
         if runtime_settings.ai_provider == "gemini"
@@ -33,15 +34,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Database Reliability Advisor", version="0.1.0")
     app.state.repository = repository
+    app.state.feedback_repository = feedback_repository
     app.state.pipeline = pipeline
     app.state.settings = runtime_settings
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=runtime_settings.cors_origin_list,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     app.include_router(health.router)
+    app.include_router(analyses.pages_router)
     app.include_router(analyses.router)
     app.include_router(feedback.router)
     if runtime_settings.app_env == "development":

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Database Reliability Advisor</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:960px;margin:3rem auto;padding:0 1rem;color:#17202a;background:#f5f7fa}
+    h1,h2{line-height:1.2}a{color:#075bb5}.card{background:white;padding:1.25rem;margin:1rem 0;border:1px solid #dce2e8;border-radius:10px}
+  </style>
+</head>
+<body>
+  <h1>Database Reliability Advisor</h1>
+  <p>Mock-first reliability analysis reports. Run a demo with <code>make demo-query</code> or <code>make demo-connection</code>.</p>
+  <h2>Recent reports</h2>
+  {% if reports %}
+    {% for report in reports %}
+    <article class="card">
+      <h3><a href="/analyses/{{ report.analysisId }}/report">{{ report.target }} — {{ report.status }}</a></h3>
+      <p>{{ report.summary }}</p>
+      <small>{{ report.analysisId }}</small>
+    </article>
+    {% endfor %}
+  {% else %}<p>No reports yet. Run one of the mock demo commands.</p>{% endif %}
+</body>
+</html>

@@ -44,7 +44,6 @@ services:
       MONGODB_URI: mongodb://app_user:app_password@mongo:27017/reliability_demo?authSource=reliability_demo
       PROMETHEUS_URL: http://prometheus:9090
       LOKI_URL: http://loki:3100
-      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
     ports:
       - "8000:8000"
     volumes:
@@ -162,19 +161,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
-
-  web:
-    image: db-reliability-advisor/web:0.1.0
-    build:
-      context: .
-      dockerfile: web/Dockerfile
-      args:
-        VITE_API_URL: http://localhost:8000
-    ports:
-      - "8080:80"
-    depends_on:
-      analysis-service:
-        condition: service_healthy
 
 volumes:
   mongo-data:

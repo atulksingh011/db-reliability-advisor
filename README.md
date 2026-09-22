@@ -1,100 +1,67 @@
 # Database Reliability Advisor
 
-An intentionally lightweight, mock-first foundation for an AI-assisted database reliability advisor. It correlates bounded telemetry evidence, deterministic rules, and a grounded AI interpretation into a validated report. The two included scenarios exercise one shared architecture and the same frozen contracts.
-
-> **Default execution uses mocks.** It makes no Gemini call and requires no AI credentials. Every fixture value is explicitly mock / illustrative, never production telemetry.
+An intentionally lightweight, **mock-first foundation** for an AI-assisted database reliability advisor. Default execution uses `MockAdapter` and `MockAIProvider`; it makes no Gemini call and requires no AI credentials. Fixture values are illustrative, not production telemetry.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    T[Trigger or alert] -->|Contract A| AS[Analysis Service]
-    subgraph AS[Analysis Service]
-      AD[Prometheus / Loki / MongoDB / mock adapters] --> EB[Evidence builder]
-      EB --> DA[Deterministic analyzer]
-    end
-    AS -->|Contract B| AI[AI provider + grounding validator]
-    AI -->|Contract C| UI[Report UI]
-    UI -->|Contract D| FB[Feedback]
-    AS -. audit snapshots .-> SQ[(SQLite)]
-    AI -. attempts and results .-> SQ
-    FB --> SQ
-    PR[(Prometheus)] --> AD
-    LO[(Loki)] --> AD
-    MO[(MongoDB metadata)] --> AD
+    T[Trigger / Scenario] -->|Contract A| AS[Analysis Service]
+    AS -->|Contract B| AI[AI + Validator]
+    AS -. audit snapshots .-> AP[(Analysis Persistence)]
+    AI -->|Contract C| RR[Python + Jinja2 Renderer]
+    AI -. attempts / outcomes .-> AP
+    RR --> HTML[HTML report + form]
+    HTML -->|Contract D| FB[Feedback Service]
+    FB --> FS[(Feedback Storage)]
+    AP --- DB[(SQLite file)]
+    FS --- DB
 ```
 
-SQLite is audit/history storage, not a live evidence source. Prometheus remains the metrics store and Loki remains the logs store. The AI provider never writes to MongoDB.
+Analysis persistence and feedback are separate workstreams/repositories even though SQLite is shared. SQLite is not used to find current evidence for AI. AI returns structured data, normal Python code assembles Contract C, and Jinja2 renders escaped HTML.
 
 ## Quick start
 
-Requirements: Docker with Compose, `curl`, and Python 3 for pretty-printing demo output.
+Requirements: Docker Compose, `curl`, and Python 3.
 
 ```bash
 cp .env.example .env
 make up
 make demo-query
 make demo-connection
-```
-
-Open the UI at [http://localhost:8080](http://localhost:8080). Both demo commands call development-only fixture selectors, which then enter the exact same `AnalysisPipeline`. The fixture choice is not part of Contract A.
-
-Useful service URLs:
-
-| Service | URL | Local credentials |
-|---|---|---|
-| Report UI | http://localhost:8080 | none |
-| Analysis Service / OpenAPI | http://localhost:8000/docs | none |
-| Orders API / OpenAPI | http://localhost:8001/docs | none |
-| Prometheus | http://localhost:9090 | none |
-| Alertmanager | http://localhost:9093 | none |
-| Loki | http://localhost:3100/ready | none |
-| Grafana | http://localhost:3001 | `admin` / `admin` for local use |
-| MongoDB | `localhost:27017` | local-only users in `infra/mongo/init/` |
-
-Run `make smoke` after the stack becomes healthy. Seeding 200,000 deterministic orders is optional (`make seed`) and is not needed by the mock flow.
-
-## Development and tests
-
-```bash
-make setup
-make lint
+make smoke
 make test
-npm --prefix web run build
-docker compose config
 ```
 
-`make help` lists all supported commands. `make reset` removes this project's Docker containers and named volumes, including the local SQLite audit file and seeded MongoDB data.
+Each demo prints its report URL; the report index is `http://localhost:8000/`. Open Grafana at `http://localhost:3001` (`admin` / `admin` locally). The **MongoDB Diagnostic Logs** panel is configured for the runtime-verified Loki query `{service="mongodb"}` over the last six hours. Alloy reads `/var/log/mongodb/mongod.log`; Loki exposes `service="mongodb"` and `source="diagnostic-log"` labels.
+
+Other endpoints: Analysis Service/OpenAPI `http://localhost:8000/docs`, Orders API `http://localhost:8001/docs`, Prometheus `http://localhost:9090`, Alertmanager `http://localhost:9093`, Loki readiness `http://localhost:3100/ready`.
+
+The demos call development-only selectors that build ordinary Contract A requests and enter the same pipeline. Scenario selection is never part of Contract A. Run `make setup` for Python-only development, `make lint` for Ruff, and `docker compose config --quiet` to validate Compose. `make reset` removes named volumes, including local SQLite and Mongo data.
+
+## Future work boundaries
+
+- Real workloads/triggers belong to **DBADV-01**.
+- Prometheus/Loki/Mongo analysis belongs to **DBADV-02**; connectivity/visualization does not mean a real analysis adapter exists.
+- Advanced grounding, repair/fallback policy and production Gemini behavior belong to **DBADV-03**.
+- **DBADV-04** owns server-rendered HTML; **DBADV-05** owns analysis audit; **DBADV-06** owns feedback workflow/storage.
+
+See [docs/WORKSTREAMS.md](docs/WORKSTREAMS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [docs/CONTRACTS.md](docs/CONTRACTS.md).
 
 ## Optional Gemini provider
 
-The official `google-genai` Python SDK is included. Set these values only when deliberately opting into network-backed analysis:
-
-```dotenv
-AI_PROVIDER=gemini
-GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-2.5-flash
-```
-
-Missing Gemini configuration fails at startup with a clear error. CI and the default `.env.example` use `AI_PROVIDER=mock`.
+The Google GenAI SDK is available for deliberate network-backed experiments. Configure `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, and `GEMINI_MODEL`; mock mode remains the default. This foundation does not claim advanced semantic grounding.
 
 ## Repository map
 
 ```text
-contracts/                         Authoritative JSON Schemas and examples
-services/analysis_service/app/     Orchestration, adapters, rules, AI, validation, storage
-services/orders_api/app/           Minimal MongoDB-backed instrumented demo API
-services/scenario_runner/           Mock scenario CLI
-web/                               Minimal React/Vite report scaffold
+contracts/                         Project-level JSON Schemas and examples
+services/analysis_service/app/     Pipeline, adapters, AI, storage, Jinja reports
+services/orders_api/app/           Instrumented MongoDB demo API
+services/scenario_runner/          Mock scenario CLI
 infra/                             MongoDB, Prometheus, Alertmanager, Loki, Alloy, Grafana
-migrations/                        Initial Alembic migration
-tests/                             Contract, unit, integration, and smoke entry points
-scripts/                           Seed, demo, and smoke utilities
-docs/                              Architecture, contracts, development, and workstreams
+migrations/                        Alembic lifecycle
+tests/                             Contract, unit, integration and smoke tests
+scripts/                           Seed, demo and smoke utilities
+docs/                              Architecture, contracts, development and ownership
 ```
-
-See [docs/WORKSTREAMS.md](docs/WORKSTREAMS.md) before replacing a mock. Project contracts are frozen; changing them requires explicit architecture review.
-
-## Pinned container versions
-
-The foundation pins MongoDB 8.0.32, Percona MongoDB Exporter 0.53.0, Prometheus 3.14.0, Alertmanager 0.34.1, Loki 3.7.8, Grafana Alloy 1.19.2, Grafana 13.2.2, Python 3.12.12, Node 22.23.2, and Nginx 1.30.5. Upgrade versions deliberately and run the full smoke test afterward.

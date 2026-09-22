@@ -31,9 +31,11 @@ check "Grafana" "http://localhost:3001/api/health"
 check "Alertmanager" "http://localhost:9093/-/ready"
 check "Analysis Service" "http://localhost:8000/health"
 check "Orders API" "http://localhost:8001/health"
-check "UI" "http://localhost:8080/"
+check "Report index" "http://localhost:8000/"
 
 report="$(curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/query-regression)"
 echo "$report" | grep -q '"schemaVersion":"1.0"'
 echo "$report" | grep -q 'Query Efficiency Regression'
 echo "ok: mock Contract C response"
+analysis_id=$(echo "$report" | python3 -c 'import json,sys; print(json.load(sys.stdin)["analysisId"])')
+check "Rendered report" "http://localhost:8000/analyses/$analysis_id/report"

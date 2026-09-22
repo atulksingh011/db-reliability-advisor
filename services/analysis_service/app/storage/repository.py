@@ -3,14 +3,13 @@ from typing import Any
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from ..contracts.models import AnalysisRequest, Feedback
+from ..contracts.models import AnalysisRequest
 from .models import (
     AIAttempt,
     AnalysisResult,
     AnalysisRun,
     DeterministicResult,
     EvidenceSnapshot,
-    FeedbackRecord,
 )
 
 
@@ -95,21 +94,15 @@ class AnalysisRepository:
             result = session.get(AnalysisResult, analysis_id)
             return result.report_payload if result else None
 
-    def add_feedback(self, feedback: Feedback) -> int:
-        with Session(self.engine) as session:
-            if session.get(AnalysisRun, feedback.analysis_id) is None:
-                raise KeyError(feedback.analysis_id)
-            record = FeedbackRecord(
-                analysis_id=feedback.analysis_id,
-                finding_id=feedback.finding_id,
-                verdict=feedback.verdict,
-                comment=feedback.comment,
-            )
-            session.add(record)
-            session.commit()
-            session.refresh(record)
-            return record.id
-
     def count_records(self, model: type[Any]) -> int:
         with Session(self.engine) as session:
             return len(session.scalars(select(model)).all())
+
+    def list_reports(self, limit: int = 20) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            rows = session.execute(
+                select(AnalysisResult.report_payload)
+                .order_by(AnalysisResult.created_at.desc())
+                .limit(limit)
+            )
+            return [row[0] for row in rows]

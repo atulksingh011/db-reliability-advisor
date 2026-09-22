@@ -5,6 +5,7 @@ from services.analysis_service.app.storage.database import (
     create_database_engine,
     initialize_database,
 )
+from services.analysis_service.app.storage.feedback_repository import FeedbackRepository
 from services.analysis_service.app.storage.models import AnalysisRun, FeedbackRecord
 from services.analysis_service.app.storage.repository import AnalysisRepository
 
@@ -25,8 +26,9 @@ def test_sqlite_repository_create_load_and_feedback() -> None:
     assert run["request"]["target"] == "orders-api"
     assert repository.count_records(AnalysisRun) == 1
 
-    feedback_id = repository.add_feedback(
+    feedback_repository = FeedbackRepository(engine)
+    feedback_id = feedback_repository.add_feedback(
         Feedback(analysis_id="AN-TEST", verdict="correct", comment="mock assessment")
     )
     assert feedback_id == 1
-    assert repository.count_records(FeedbackRecord) == 1
+    assert feedback_repository.count_records(FeedbackRecord) == 1

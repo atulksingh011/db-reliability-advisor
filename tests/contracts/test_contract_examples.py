@@ -46,6 +46,25 @@ def test_contract_a_rejects_reversed_window() -> None:
         )
 
 
+def test_contract_b_supports_optional_provenance_without_mandatory_source_query() -> None:
+    schema = json.loads((CONTRACTS / "contract-b-analysis-package.schema.json").read_text())
+    example = json.loads((EXAMPLES / "scenario-a-contract-b.example.json").read_text())
+    evidence = example["evidence"]
+
+    assert "timestamp" in evidence[0]
+    assert "observationWindow" in evidence[1]
+    evidence.append(
+        {
+            "id": "E6",
+            "kind": "metadata",
+            "name": "collection",
+            "value": {},
+            "source": {"system": "mongodb"},
+        }
+    )
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(example)
+
+
 def test_invalid_feedback_verdict_fails() -> None:
     schema = json.loads((CONTRACTS / "contract-d-feedback.schema.json").read_text())
     invalid = {"analysisId": "AN-123", "verdict": "mostly_right"}

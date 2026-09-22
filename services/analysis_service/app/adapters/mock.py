@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from ..contracts.models import AnalysisPackage, AnalysisRequest
+from ..contracts.models import (
+    AnalysisPackage,
+    AnalysisRequest,
+    EvidenceObservationWindow,
+)
 from .base import CollectedEvidence
 
 FIXTURE_FILES = {
@@ -28,7 +32,27 @@ class MockAdapter:
         package = AnalysisPackage.model_validate_json(
             (self.contract_examples_dir / filename).read_text(encoding="utf-8")
         )
+        duration = request.end_time - request.start_time
+        timestamp = request.start_time + duration / 2
+        evidence = [
+            item.model_copy(
+                update={
+                    "timestamp": timestamp
+                    if item.kind == "event"
+                    else item.timestamp,
+                    "observation_window": (
+                        EvidenceObservationWindow(
+                            start_time=request.start_time,
+                            end_time=request.end_time,
+                        )
+                        if item.kind != "event"
+                        else item.observation_window
+                    ),
+                }
+            )
+            for item in package.evidence
+        ]
         return CollectedEvidence(
-            evidence=package.evidence,
+            evidence=evidence,
             missing_evidence=["Real production telemetry is not collected in mock mode."],
         )

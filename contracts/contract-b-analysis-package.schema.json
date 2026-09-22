@@ -42,7 +42,10 @@
         "kind": {"enum": ["event", "metric_comparison", "metric_window", "query_comparison", "query_window", "query_plan", "metadata"]},
         "name": {"type": "string", "minLength": 1},
         "value": {},
-        "source": {"$ref": "#/$defs/source"}
+        "unit": {"type": "string", "minLength": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "observationWindow": {"$ref": "#/$defs/window"},
+        "timestamp": {"type": "string", "format": "date-time"}
       }
     },
     "finding": {

@@ -1,21 +1,27 @@
-# Frozen contracts
+# Contracts
 
-The JSON Schemas in `contracts/` are authoritative. Examples in `contracts/examples/` are validated in CI with Draft 2020-12 and date-time format checking.
+`contracts/` contains the four project-level JSON Schemas. Examples are validated in CI. Internal Python models may evolve as long as project-level compatibility is preserved.
 
-## Contract A — trigger to Analysis Service
+## Project-level contracts
 
-Requires only a non-empty `target`, `startTime`, and `endTime`. The typed runtime model enforces `startTime < endTime`; the pipeline enforces `MAX_ANALYSIS_WINDOW_MINUTES`. A release time, version, alert type, root cause, or scenario type is not part of this contract.
+### Contract A — trigger to Analysis Service
 
-## Contract B — Analysis Service to AI/Validator
+Exactly three required fields: non-empty `target`, `startTime`, and `endTime`. The typed model enforces `startTime < endTime`; the pipeline applies its configured maximum window. Deployment version, alert type, scenario, release time, and root cause are not request fields.
 
-Carries the analysis identity/window, canonical evidence, deterministic findings, and missing-evidence notices. Evidence has reproducible source metadata where available. AI hypotheses are forbidden here.
+### Contract B — Analysis Service to AI/Validator
 
-## Contract C — AI/Validator to UI
+Top-level fields remain `schemaVersion`, `analysisId`, `target`, `window`, `evidence`, `deterministicFindings`, and `missingEvidence`. Evidence requires `id`, `kind`, `name`, `value`, and `source`; optional `unit` carries a canonical measurement unit where relevant. `source.system` is required; `source.query` is optional because not every source has a query concept.
 
-Carries a validated status, summary, sections, grounded facts, explicitly labelled hypotheses, checks, limitations, Prometheus/Loki verification queries, and trusted chart-ready data. Fact citation fields point back to Contract B IDs.
+Provenance is flexible: use `timestamp` for point events, `observationWindow` (`startTime`, `endTime`) for windowed observations, or neither when collection context is sufficient. These are optional and are not mutually required. Adapters should normalize units and retain source query/system where applicable.
 
-## Contract D — UI to feedback persistence
+### Contract C — AI/Validator to renderer
 
-Requires `analysisId` and a verdict (`correct`, `partially_correct`, or `incorrect`). `findingId` and `comment` are optional.
+Contains status, summary, categorized sections, facts and citations, explicitly labelled hypotheses with supporting and contradicting evidence IDs, confidence, recommended checks, limitations, verification queries and chart-friendly deterministic data. It is structured data, never AI-authored HTML.
 
-Cross-field invariants that JSON Schema cannot express portably are enforced by Pydantic and covered by tests.
+### Contract D — report to Feedback Service
+
+Requires `analysisId` and verdict (`correct`, `partially_correct`, or `incorrect`). `findingId` and `comment` are optional. The HTML form serializes these same fields; the feedback service validates and stores Contract D.
+
+## Internal Python models
+
+Adapter observations, evidence-builder inputs, normalized `Evidence`, analyzer inputs/results, and provider interpretations are implementation models, not additional project-level contracts. Evolve them without expanding A/B/C/D unless architecture review approves a compatible contract change.

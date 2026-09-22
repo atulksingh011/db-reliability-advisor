@@ -25,7 +25,7 @@ class DeterministicAnalyzer:
         value = self._comparison(latency)
         before = float(value["before"])
         after = float(value["after"])
-        increase = round(((after - before) / before) * 100)
+        increase = round(((after - before) / before) * 100) if before else None
         return DeterministicFinding(
             id=finding_id,
             rule="latency_percent_change",
@@ -34,23 +34,17 @@ class DeterministicAnalyzer:
         )
 
     def _query_regression(self, items: dict[str, Evidence]) -> list[DeterministicFinding]:
+        required = {"documents_examined", "documents_returned", "query_plan", "request_p95_ms"}
+        if not required.issubset(items):
+            return []
         examined = items["documents_examined"]
         returned = items["documents_returned"]
         plan = items["query_plan"]
         examined_value = self._comparison(examined)
         returned_value = self._comparison(returned)
         plan_value = self._comparison(plan)
-        return [
+        findings = [
             self._latency_finding(items["request_p95_ms"], "D1"),
-            DeterministicFinding(
-                id="D2",
-                rule="scan_ratio_change",
-                result={
-                    "before": examined_value["before"] / returned_value["before"],
-                    "after": examined_value["after"] / returned_value["after"],
-                },
-                evidence_ids=[examined.id, returned.id],
-            ),
             DeterministicFinding(
                 id="D3",
                 rule="query_plan_change",
@@ -58,8 +52,28 @@ class DeterministicAnalyzer:
                 evidence_ids=[plan.id],
             ),
         ]
+        if returned_value.get("before") and returned_value.get("after"):
+            findings.insert(
+                1,
+                DeterministicFinding(
+                    id="D2",
+                    rule="scan_ratio_change",
+                    result={
+                        "before": examined_value["before"] / returned_value["before"],
+                        "after": examined_value["after"] / returned_value["after"],
+                    },
+                    evidence_ids=[examined.id, returned.id],
+                ),
+            )
+        return findings
 
     def _connection_pressure(self, items: dict[str, Evidence]) -> list[DeterministicFinding]:
+        required = {
+            "connection_utilization_percent", "connection_failures", "query_plan",
+            "scan_ratio", "request_p95_ms",
+        }
+        if not required.issubset(items):
+            return []
         connections = items["connection_utilization_percent"]
         failures = items["connection_failures"]
         connection_value = self._comparison(connections)
@@ -67,8 +81,10 @@ class DeterministicAnalyzer:
         plan_value = self._comparison(plan)
         ratio = items["scan_ratio"]
         ratio_value = self._comparison(ratio)
-        change_percent = round(
-            ((ratio_value["after"] - ratio_value["before"]) / ratio_value["before"]) * 100
+        change_percent = (
+            round(((ratio_value["after"] - ratio_value["before"]) / ratio_value["before"]) * 100)
+            if ratio_value.get("before")
+            else None
         )
         return [
             DeterministicFinding(

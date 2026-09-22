@@ -1,7 +1,8 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 
 from ..contracts.models import (
     AnalysisAccepted,
@@ -10,13 +11,36 @@ from ..contracts.models import (
     ValidatedReport,
 )
 from ..orchestration.pipeline import AnalysisPipeline
+from ..reporting.renderer import TEMPLATES
 
 router = APIRouter(prefix="/api/v1")
 dev_router = APIRouter(prefix="/api/v1/dev/mock")
+pages_router = APIRouter()
 
 
 def _pipeline(request: Request) -> AnalysisPipeline:
     return request.app.state.pipeline
+
+
+@pages_router.get("/", response_class=HTMLResponse)
+def report_index(request: Request) -> HTMLResponse:
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"reports": request.app.state.repository.list_reports()},
+    )
+
+
+@pages_router.get("/analyses/{analysis_id}/report", response_class=HTMLResponse)
+def get_analysis_report(analysis_id: str, request: Request) -> HTMLResponse:
+    report = request.app.state.repository.get_result(analysis_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Analysis report not found")
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="report.html",
+        context={"report": report},
+    )
 
 
 @router.post("/analyses", response_model=AnalysisAccepted, status_code=status.HTTP_201_CREATED)
@@ -44,26 +68,27 @@ def get_analysis_result(analysis_id: str, request: Request) -> ValidatedReport:
     return ValidatedReport.model_validate(result)
 
 
-def _mock_request(hour: int) -> AnalysisRequest:
+def _mock_request() -> AnalysisRequest:
+    end_time = datetime.now(UTC).replace(second=0, microsecond=0)
     return AnalysisRequest(
         target="orders-api",
-        start_time=datetime(2026, 9, 20, hour, 0, tzinfo=UTC),
-        end_time=datetime(2026, 9, 20, hour, 10, tzinfo=UTC),
+        start_time=end_time - timedelta(minutes=10),
+        end_time=end_time,
     )
 
 
 @dev_router.post("/query-regression", response_model=ValidatedReport)
 def run_query_regression(request: Request) -> ValidatedReport:
-    return _pipeline(request).run(_mock_request(10), fixture_name="query-regression")
+    return _pipeline(request).run(_mock_request(), fixture_name="query-regression")
 
 
 @dev_router.post("/connection-pressure", response_model=ValidatedReport)
 def run_connection_pressure(request: Request) -> ValidatedReport:
-    return _pipeline(request).run(_mock_request(11), fixture_name="connection-pressure")
+    return _pipeline(request).run(_mock_request(), fixture_name="connection-pressure")
 
 
 @dev_router.post("/alertmanager", response_model=ValidatedReport)
 def receive_mock_alert(request: Request, payload: dict[str, Any]) -> ValidatedReport:
     """Development bridge proving alerts enter through the same Contract A pipeline."""
     del payload  # Controlled foundation hook; DBADV-01 will map real labels and timestamps.
-    return _pipeline(request).run(_mock_request(11), fixture_name="connection-pressure")
+    return _pipeline(request).run(_mock_request(), fixture_name="connection-pressure")

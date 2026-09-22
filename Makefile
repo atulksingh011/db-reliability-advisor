@@ -4,7 +4,7 @@ PIP ?= .venv/bin/pip
 .PHONY: help setup up down restart logs ps seed test test-contracts test-integration lint format smoke demo-query demo-connection reset
 
 help:
-	@echo "setup             Install Python and frontend dependencies"
+	@echo "setup             Install Python dependencies"
 	@echo "up                Build and start the local stack"
 	@echo "down              Stop the local stack"
 	@echo "restart           Restart the local stack"
@@ -24,7 +24,6 @@ help:
 setup:
 	python3 -m venv .venv
 	$(PIP) install -e '.[dev]'
-	npm --prefix web install
 
 up:
 	docker compose up -d --build
@@ -62,10 +61,16 @@ smoke:
 	sh scripts/smoke_test.sh
 
 demo-query:
-	@curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/query-regression | python3 -m json.tool
+	@response=$$(curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/query-regression); \
+	  echo "$$response" | python3 -m json.tool; \
+	  id=$$(echo "$$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["analysisId"])'); \
+	  echo "Report: http://localhost:8000/analyses/$$id/report"
 
 demo-connection:
-	@curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/connection-pressure | python3 -m json.tool
+	@response=$$(curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/connection-pressure); \
+	  echo "$$response" | python3 -m json.tool; \
+	  id=$$(echo "$$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["analysisId"])'); \
+	  echo "Report: http://localhost:8000/analyses/$$id/report"
 
 reset:
 	docker compose down -v --remove-orphans

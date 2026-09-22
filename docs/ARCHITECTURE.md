@@ -1,18 +1,26 @@
 # Architecture
 
-The invariant flow is:
+The frozen project flow keeps audit persistence parallel to live analysis. Analysis Persistence and Feedback are separate responsibilities even though both currently use the same SQLite database.
 
-```text
-Trigger -> Contract A -> Analysis Service -> Contract B -> AI/Validator
-        -> Contract C -> Report UI -> Contract D -> SQLite
+```mermaid
+flowchart LR
+    T[Trigger / Scenario] -->|Contract A| AS[Analysis Service<br/>orchestrator, adapters, evidence builder, deterministic analysis]
+    AS -->|Contract B| AI[AI Provider + Validator]
+    AS -. request, evidence, findings .-> AP[(Analysis Persistence / Audit)]
+    AI -->|Contract C| RR[Python Report Renderer<br/>Jinja2]
+    AI -. attempts, validation, report .-> AP
+    RR --> HTML[Server-rendered HTML report + feedback form]
+    HTML -->|Contract D| FS[Feedback Service]
+    FS --> FP[(Feedback Storage)]
+    AP --- DB[(SQLite file)]
+    FP --- DB
+    PR[(Prometheus)] -. future DBADV-02 .-> AS
+    LO[(Loki)] -. future DBADV-02 .-> AS
+    MO[(MongoDB metadata)] -. future DBADV-02 .-> AS
 ```
 
-The Analysis Service owns the adapters, evidence builder, and deterministic analyzer. These are internal modules, not extra project-level contracts. Evidence records and deterministic findings stay conceptually distinct in Contract B so a later validator can trace conclusions precisely.
+Contract A is only `target`, `startTime`, and `endTime`. Trigger metadata and scenario selection do not expand the contract. Development-only fixture selectors use the same pipeline.
 
-Prometheus, Loki, and read-only MongoDB metadata are the future live evidence inputs. SQLite stores the Contract A request, bounded evidence snapshots, deterministic results, AI attempts, validation outcomes, final Contract C reports, and feedback. It deliberately does not mirror raw Prometheus time series or Loki streams and is never the normal evidence path into AI.
+The Analysis Service sends Contract B directly to AI; it does not read current evidence back from SQLite. Persistence is a side path for audit/replay. AI returns a structured interpretation, the validator checks schema and referenced IDs, and normal Python code assembles Contract C. AI never generates HTML. Jinja renders Contract C with autoescaping enabled.
 
-Contract A has only `target`, `startTime`, and `endTime`. Release markers, alerts, and deployment changes are evidence discovered inside that window. Development-only endpoints choose fixtures outside the contract, then call the same pipeline.
-
-AI receives Contract B and produces a typed interpretation. The grounding validator rejects references to evidence or deterministic findings that do not exist. Only an accepted interpretation is assembled into Contract C. Numeric facts remain authoritative only insofar as they are grounded in Contract B; AI text is not a source of numeric truth. AI providers have no MongoDB mutation capability.
-
-The default provider and telemetry adapter are mock implementations. The real adapter classes expose the intended boundaries and fail explicitly until DBADV-02 implements them.
+The default runtime uses `MockAdapter` and `MockAIProvider`. Prometheus/Loki/Mongo analysis, realistic workloads and advanced grounding remain future ticket work as defined in `WORKSTREAMS.md`. Grafana log visibility is infrastructure and is not the future Loki analysis adapter.

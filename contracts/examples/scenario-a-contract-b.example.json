@@ -4,8 +4,8 @@
   "target": "orders-api",
   "window": {"startTime": "2026-09-20T10:00:00Z", "endTime": "2026-09-20T10:10:00Z"},
   "evidence": [
-    {"id": "E1", "kind": "event", "name": "deployment", "value": {"service": "orders-api", "version": "v2", "timestamp": "2026-09-20T10:05:00Z", "mock": true}, "source": {"system": "mock", "query": "illustrative deployment event fixture"}},
-    {"id": "E2", "kind": "metric_comparison", "name": "request_p95_ms", "value": {"before": 200, "after": 1000, "unit": "ms", "mock": true}, "source": {"system": "mock", "query": "illustrative histogram_quantile query"}},
+    {"id": "E1", "kind": "event", "name": "deployment", "value": {"service": "orders-api", "version": "v2", "timestamp": "2026-09-20T10:05:00Z", "mock": true}, "source": {"system": "mock", "query": "illustrative deployment event fixture"}, "timestamp": "2026-09-20T10:05:00Z"},
+    {"id": "E2", "kind": "metric_comparison", "name": "request_p95_ms", "value": {"before": 200, "after": 1000, "unit": "ms", "mock": true}, "unit": "ms", "source": {"system": "mock", "query": "illustrative histogram_quantile query"}, "observationWindow": {"startTime": "2026-09-20T10:00:00Z", "endTime": "2026-09-20T10:10:00Z"}},
     {"id": "E3", "kind": "query_comparison", "name": "documents_examined", "value": {"before": 1000, "after": 200000, "mock": true}, "source": {"system": "mock", "query": "illustrative MongoDB diagnostic-log aggregation"}},
     {"id": "E4", "kind": "query_comparison", "name": "documents_returned", "value": {"before": 50, "after": 50, "mock": true}, "source": {"system": "mock", "query": "illustrative MongoDB diagnostic-log aggregation"}},
     {"id": "E5", "kind": "query_plan", "name": "query_plan", "value": {"before": "IXSCAN", "after": "COLLSCAN", "mock": true}, "source": {"system": "mock", "query": "illustrative plan-summary comparison"}}

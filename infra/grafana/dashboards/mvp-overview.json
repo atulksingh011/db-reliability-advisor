@@ -18,7 +18,8 @@
     },
     {
       "type": "logs",
-      "title": "MongoDB diagnostic logs",
+      "title": "MongoDB Diagnostic Logs",
+      "description": "MongoDB mongod.log entries collected by Alloy. Query: {service=\"mongodb\"}",
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [{"expr": "{service=\"mongodb\"}", "refId": "A"}],
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
@@ -35,7 +36,7 @@
   "schemaVersion": 40,
   "tags": ["mock", "foundation"],
   "templating": {"list": []},
-  "time": {"from": "now-30m", "to": "now"},
+  "time": {"from": "now-6h", "to": "now"},
   "timezone": "browser",
   "title": "MVP Overview",
   "uid": "dbadv-mvp-overview",

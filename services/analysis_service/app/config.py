@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     prometheus_url: str = "http://localhost:9090"
     loki_url: str = "http://localhost:3100"
     max_analysis_window_minutes: int = 60
-    cors_origins: str = "http://localhost:8080,http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -32,11 +31,6 @@ class Settings(BaseSettings):
             raise ValueError("GEMINI_API_KEY is required when AI_PROVIDER=gemini")
         if self.ai_provider == "gemini" and not self.gemini_model:
             raise ValueError("GEMINI_MODEL is required when AI_PROVIDER=gemini")
-
-    @property
-    def cors_origin_list(self) -> list[str]:
-        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
-
 
 @lru_cache
 def get_settings() -> Settings:
