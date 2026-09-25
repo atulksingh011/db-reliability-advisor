@@ -13,6 +13,17 @@ from ..contracts.models import (
 from ..orchestration.pipeline import AnalysisPipeline
 from ..reporting.renderer import TEMPLATES
 
+# Contract A API Endpoint
+# Objective: Create the POST /api/v1/analyses endpoint that accepts analysis requests
+# Done:
+#   - Router created 
+#   - POST handler implemented with validation of Contract A 
+#   - Analysis ID generated in format AN-[random string] 
+#   - Request passed to orchestrator for processing
+#   - Error handling for invalid Contract A 
+# Note:
+#   - Returns 201 Created (synchronous processing) as per MVP allowance 
+#   - Unit tests for endpoint validation not yet implemented
 router = APIRouter(prefix="/api/v1")
 dev_router = APIRouter(prefix="/api/v1/dev/mock")
 pages_router = APIRouter()
@@ -43,12 +54,15 @@ def get_analysis_report(analysis_id: str, request: Request) -> HTMLResponse:
     )
 
 
+# POST handler for analyses endpoint
 @router.post("/analyses", response_model=AnalysisAccepted, status_code=status.HTTP_201_CREATED)
 def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisAccepted:
     try:
         report = _pipeline(request).run(payload)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=422, detail=str(exc)
+        ) from exc  # Error handling for invalid Contract A
     return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
