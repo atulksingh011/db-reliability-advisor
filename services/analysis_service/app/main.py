@@ -4,7 +4,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import make_asgi_app
 
+from .adapters.loki import LokiAdapter
 from .adapters.mock import MockAdapter
+from .adapters.mongodb import MongoMetadataAdapter
+from .adapters.multi_source import MultiSourceAdapter
+from .adapters.prometheus import PrometheusAdapter
 from .ai.gemini_provider import GeminiAIProvider
 from .ai.mock_provider import MockAIProvider
 from .api import analyses, feedback, health
@@ -28,8 +32,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if runtime_settings.ai_provider == "gemini"
         else MockAIProvider()
     )
+    evidence_adapter = (
+        MultiSourceAdapter(
+            [
+                PrometheusAdapter(runtime_settings.prometheus_url),
+                LokiAdapter(runtime_settings.loki_url),
+                MongoMetadataAdapter(runtime_settings.mongodb_uri),
+            ]
+        )
+        if runtime_settings.evidence_mode == "live"
+        else MockAdapter()
+    )
     pipeline = AnalysisPipeline(
-        adapter=MockAdapter(),
+        adapter=evidence_adapter,
         provider=provider,
         repository=repository,
         max_window_minutes=runtime_settings.max_analysis_window_minutes,
@@ -51,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(feedback.router)
     if runtime_settings.app_env == "development":
         app.include_router(analyses.dev_router)
+        app.include_router(analyses.live_dev_router)
     app.mount("/metrics", make_asgi_app())
     return app
 
