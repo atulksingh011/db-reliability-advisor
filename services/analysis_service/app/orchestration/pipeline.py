@@ -8,6 +8,7 @@ from ..analyzers.deterministic import DeterministicAnalyzer
 from ..contracts.models import AnalysisRequest, ValidatedReport
 from ..evidence.builder import EvidenceBuilder
 from ..reports.assembler import ReportAssembler
+from ..reports.data_builder import TrustedReportDataBuilder
 from ..storage.repository import AnalysisRepository
 
 
@@ -29,6 +30,7 @@ class AnalysisPipeline:
         self.analyzer = DeterministicAnalyzer()
         self.validator = GroundingValidator()
         self.assembler = ReportAssembler()
+        self.trusted_data_builder = TrustedReportDataBuilder()
 
     def run(
         self,
@@ -68,7 +70,8 @@ class AnalysisPipeline:
             self.repository.save_ai_attempt(
                 analysis_id, self.provider.name, interpretation_payload, "accepted"
             )
-            report = self.assembler.assemble(package, validated)
+            trusted = self.trusted_data_builder.build(package)
+            report = self.assembler.assemble(package, trusted, validated)
             self.repository.save_result(analysis_id, report.model_dump(mode="json", by_alias=True))
             return report
         except Exception:

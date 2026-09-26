@@ -19,20 +19,6 @@ class GroundingValidator:
         errors: list[str] = []
 
         for section in interpretation.sections:
-            for fact in section.facts:
-                errors.extend(
-                    self._unknown_references(
-                        fact.evidence_ids, evidence_ids, f"fact in {section.id}", "evidence"
-                    )
-                )
-                errors.extend(
-                    self._unknown_references(
-                        fact.deterministic_finding_ids,
-                        finding_ids,
-                        f"fact in {section.id}",
-                        "deterministic finding",
-                    )
-                )
             hypothesis = section.hypothesis
             errors.extend(
                 self._unknown_references(
@@ -40,6 +26,30 @@ class GroundingValidator:
                     evidence_ids,
                     f"hypothesis in {section.id}",
                     "evidence",
+                )
+            )
+            errors.extend(
+                self._unknown_references(
+                    section.supporting_evidence_ids,
+                    evidence_ids,
+                    f"interpretation in {section.id}",
+                    "evidence",
+                )
+            )
+            errors.extend(
+                self._unknown_references(
+                    section.contradicting_evidence_ids,
+                    evidence_ids,
+                    f"interpretation in {section.id}",
+                    "evidence",
+                )
+            )
+            errors.extend(
+                self._unknown_references(
+                    section.deterministic_finding_ids,
+                    finding_ids,
+                    f"interpretation in {section.id}",
+                    "deterministic finding",
                 )
             )
             errors.extend(

@@ -35,3 +35,6 @@ def test_mock_provider_supports_both_scenarios(
     assert response.sections[0].title == expected_title
     assert expected_phrase in response.summary.lower()
     assert response.sections[0].hypothesis.text.startswith("Hypothesis:")
+    assert not hasattr(response.sections[0], "facts")
+    assert not hasattr(response.sections[0], "charts")
+    assert not hasattr(response.sections[0], "verification")

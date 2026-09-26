@@ -74,3 +74,32 @@ def test_connection_scenario_cites_stable_plan_as_contradicting_evidence() -> No
     assert {"E5", "E6"}.issubset(hypothesis.contradicting_evidence_ids)
     assert evidence["E5"].value["before"] == evidence["E5"].value["after"] == "IXSCAN"
     assert evidence["E6"].value["after"] - evidence["E6"].value["before"] <= 2
+
+
+def test_report_numeric_values_come_from_contract_b() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), MockAIProvider(), AnalysisRepository(engine)
+    ).run(request_at(10), "query-regression")
+
+    latency = next(chart for chart in report.sections[0].charts if chart.id == "request-p95-ms")
+    assert [point.value for point in latency.series] == [200, 1000]
+    assert "1000" in " ".join(fact.text for fact in report.sections[0].facts)
+    assert all("1300" not in fact.text for fact in report.sections[0].facts)
+
+
+def test_connection_report_contains_trusted_values_and_contradiction() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), MockAIProvider(), AnalysisRepository(engine)
+    ).run(request_at(11), "connection-pressure")
+
+    connections = next(
+        chart
+        for chart in report.sections[0].charts
+        if chart.id == "connection-utilization-percent"
+    )
+    assert [point.value for point in connections.series] == [25, 92]
+    assert report.sections[0].hypothesis.contradicting_evidence_ids == ["E5", "E6"]

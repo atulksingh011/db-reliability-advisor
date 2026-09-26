@@ -24,6 +24,21 @@ def test_validator_rejects_unknown_evidence_id() -> None:
 def test_validator_rejects_unknown_deterministic_finding_id() -> None:
     package = load_package("scenario-a-contract-b.example.json")
     interpretation = deepcopy(MockAIProvider().analyze(package))
-    interpretation.sections[0].facts[0].deterministic_finding_ids.append("D99")
+    interpretation.sections[0].deterministic_finding_ids.append("D99")
     with pytest.raises(GroundingValidationError, match="Unknown deterministic finding ID D99"):
         GroundingValidator().validate(interpretation, package)
+
+
+def test_ai_interpretation_forbids_authoritative_report_fields() -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    interpretation = MockAIProvider().analyze(package).model_dump(by_alias=True)
+    interpretation["sections"][0]["charts"] = [
+        {
+            "id": "wrong",
+            "title": "Wrong",
+            "type": "bar",
+            "series": [{"label": "after", "value": 1300}],
+        }
+    ]
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        type(MockAIProvider().analyze(package)).model_validate(interpretation)
