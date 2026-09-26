@@ -5,7 +5,7 @@ from ..adapters.base import EvidenceAdapter
 from ..ai.base import AIInterpretation, AIInterpretationSection, AIProvider
 from ..ai.validator import GroundingValidationError, GroundingValidator
 from ..analyzers.deterministic import DeterministicAnalyzer
-from ..contracts.models import AnalysisRequest, Hypothesis, ValidatedReport
+from ..contracts.models import AnalysisPackage, AnalysisRequest, Hypothesis, ValidatedReport
 from ..evidence.builder import EvidenceBuilder
 from ..reports.assembler import ReportAssembler
 from ..reports.data_builder import TrustedReportDataBuilder
@@ -59,8 +59,41 @@ class AnalysisPipeline:
             report = self.assembler.assemble(package, trusted, validated)
             self.repository.save_result(analysis_id, report.model_dump(mode="json", by_alias=True))
             return report
-        except Exception:
-            self.repository.mark_failed(analysis_id)
+        except Exception as exc:
+            self.repository.mark_failed(analysis_id, str(exc))
+            raise
+
+    def replay(self, source_analysis_id: str) -> ValidatedReport:
+        """Run AI/validation/reporting against one immutable stored Contract B snapshot."""
+        payload = self.repository.get_package(source_analysis_id)
+        source = self.repository.get_run(source_analysis_id)
+        if payload is None or source is None:
+            raise KeyError(source_analysis_id)
+        source_package = AnalysisPackage.model_validate(payload)
+        analysis_id = f"AN-{uuid4().hex[:12].upper()}"
+        request = AnalysisRequest(
+            target=source_package.target,
+            start_time=source_package.window.start_time,
+            end_time=source_package.window.end_time,
+        )
+        self.repository.create_run(
+            analysis_id,
+            request,
+            source.get("fixtureName") or "replay",
+            replayed_from=source_analysis_id,
+        )
+        try:
+            # Keep the exact historical Contract B in the replay audit. The execution
+            # copy receives the new ID so the resulting Contract C belongs to the replay.
+            self.repository.save_analysis_package(analysis_id, payload)
+            package = source_package.model_copy(update={"analysis_id": analysis_id})
+            validated = self._interpret(package, analysis_id)
+            trusted = self.trusted_data_builder.build(package)
+            report = self.assembler.assemble(package, trusted, validated)
+            self.repository.save_result(analysis_id, report.model_dump(mode="json", by_alias=True))
+            return report
+        except Exception as exc:
+            self.repository.mark_failed(analysis_id, str(exc))
             raise
 
     def _interpret(self, package, analysis_id: str) -> AIInterpretation:
@@ -72,51 +105,71 @@ class AnalysisPipeline:
             try:
                 validated = self.validator.validate(interpretation, package)
             except GroundingValidationError as exc:
-                self.repository.save_ai_attempt(
+                attempt_id = self.repository.save_ai_attempt(
                     analysis_id,
                     self.provider.name,
                     interpretation.model_dump(mode="json", by_alias=True),
                     "rejected",
                     exc.errors,
+                    model=getattr(self.provider, "model", None),
+                    error_category="validation",
                 )
+                self.repository.save_validation(analysis_id, attempt_id, 1, False, exc.errors, True)
                 try:
                     repaired = self.provider.repair(package, exc.errors, raw_response)
                     validated = self.validator.validate(repaired, package)
-                    self.repository.save_ai_attempt(
+                    attempt_id = self.repository.save_ai_attempt(
                         analysis_id,
                         self.provider.name,
                         repaired.model_dump(mode="json", by_alias=True),
                         "accepted_after_repair",
+                        model=getattr(self.provider, "model", None),
                     )
+                    self.repository.save_validation(analysis_id, attempt_id, 2, True)
                 except Exception as repair_error:
+                    self.repository.save_validation(
+                        analysis_id, None, 2, False, [str(repair_error)]
+                    )
                     return self._fallback(package, analysis_id, [*exc.errors, str(repair_error)])
             else:
-                self.repository.save_ai_attempt(
+                attempt_id = self.repository.save_ai_attempt(
                     analysis_id,
                     self.provider.name,
                     interpretation.model_dump(mode="json", by_alias=True),
                     "accepted",
+                    model=getattr(self.provider, "model", None),
                 )
+                self.repository.save_validation(analysis_id, attempt_id, 1, True)
             return validated
         except Exception as exc:
             if interpretation is not None:
                 payload = interpretation.model_dump(mode="json", by_alias=True)
             else:
                 payload = {"error": str(exc)}
-            self.repository.save_ai_attempt(
-                analysis_id, self.provider.name, payload, "failed", [str(exc)]
+            attempt_id = self.repository.save_ai_attempt(
+                analysis_id,
+                self.provider.name,
+                payload,
+                "failed",
+                [str(exc)],
+                model=getattr(self.provider, "model", None),
+                error_category=type(exc).__name__,
             )
+            self.repository.save_validation(analysis_id, attempt_id, 1, False, [str(exc)], True)
             try:
                 repaired = self.provider.repair(package, [str(exc)], raw_response)
                 validated = self.validator.validate(repaired, package)
-                self.repository.save_ai_attempt(
+                attempt_id = self.repository.save_ai_attempt(
                     analysis_id,
                     self.provider.name,
                     repaired.model_dump(mode="json", by_alias=True),
                     "accepted_after_repair",
+                    model=getattr(self.provider, "model", None),
                 )
+                self.repository.save_validation(analysis_id, attempt_id, 2, True)
                 return validated
             except Exception as repair_error:
+                self.repository.save_validation(analysis_id, None, 2, False, [str(repair_error)])
                 return self._fallback(package, analysis_id, [str(exc), str(repair_error)])
 
     def _fallback(self, package, analysis_id: str, errors: list[str]) -> AIInterpretation:
@@ -162,5 +215,10 @@ class AnalysisPipeline:
             fallback.model_dump(mode="json", by_alias=True),
             "fallback",
             errors,
+            model=getattr(self.provider, "model", None),
+            error_category="fallback",
+        )
+        self.repository.save_fallback(
+            analysis_id, errors, fallback.model_dump(mode="json", by_alias=True)
         )
         return fallback
