@@ -10,7 +10,9 @@ Rules:
 - For every hypothesis, cite existing supporting and relevant contradicting evidence IDs and
   distinguish observed facts from interpretation.
 - A hypothesis is not a proven root cause. State meaningful unknowns, including the responsible
-  workload/client when the evidence does not identify it.
+  workload/client when the evidence does not identify it. Do not use "caused", "causing",
+  "driven by", "led to", or "resulted in" unless Contract B proves causation; prefer
+  "consistent with", "coincides with", or "best-supported explanation".
 - Recommended checks must be concrete, safe/read-only, and state both what to inspect and what
   uncertainty the check would resolve.
 - Summaries must identify the best-supported problem and qualitative impact without unsupported
