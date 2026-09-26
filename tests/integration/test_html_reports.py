@@ -52,3 +52,46 @@ def test_report_template_escapes_ai_controlled_text() -> None:
     )
     assert "&lt;script&gt;" in rendered
     assert "<script>alert" not in rendered
+
+
+def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="production", database_url="sqlite://", ai_provider="mock"))
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Manual analysis" in response.text
+    submitted = client.post(
+        "/analyses/manual",
+        data={
+            "target": "orders-api",
+            "startTime": "2026-09-20T11:00",
+            "endTime": "2026-09-20T11:10",
+        },
+        follow_redirects=False,
+    )
+    assert submitted.status_code == 303
+    assert submitted.headers["location"].startswith("/analyses/AN-")
+
+
+def test_manual_analysis_form_reports_invalid_window(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="production", database_url="sqlite://", ai_provider="mock"))
+    response = TestClient(app).post(
+        "/analyses/manual",
+        data={
+            "target": "orders-api",
+            "startTime": "2026-09-20T11:10",
+            "endTime": "2026-09-20T11:00",
+        },
+    )
+    assert response.status_code == 422
+    assert "startTime must be earlier than endTime" in response.text

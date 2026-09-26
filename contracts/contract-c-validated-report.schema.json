@@ -51,9 +51,11 @@
       "additionalProperties": false,
       "required": ["system", "query"],
       "properties": {
-        "system": {"enum": ["prometheus", "loki"]},
+        "system": {"enum": ["prometheus", "loki", "mongodb", "mock"]},
         "query": {"type": "string", "minLength": 1},
-        "label": {"type": "string"}
+        "label": {"type": "string"},
+        "mode": {"enum": ["actual", "illustrative"]},
+        "evidenceIds": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]+$"}, "uniqueItems": true}
       }
     },
     "chart": {

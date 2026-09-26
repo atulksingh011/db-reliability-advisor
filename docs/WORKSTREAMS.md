@@ -33,7 +33,7 @@ The six tickets divide implementation ownership without changing project-level c
 - **Files/modules:** `services/analysis_service/app/ai/`, `orchestration/pipeline.py`, Contract C models and schema.
 - **Mocks / start now:** Mock provider, typed response and ID validator. Extend validation and provider failure handling in parallel using examples.
 - **Dependencies / tests:** Contract B/C. Test schema and citations, numeric/semantic claims, contradictory evidence, unsafe recommendations, provider failures, repair/fallback and no-network mock mode.
-- **Definition of Done:** Every report has valid citations and policy-safe recommendations; malformed/provider failures recover through tested repair/fallback. Numeric grounding, semantic grounding, recommendation safety and production Gemini integration are explicitly remaining until implemented. Approximate size: **M**.
+- **Definition of Done:** Every report has valid citations and policy-safe recommendations; malformed/provider failures recover through one tested repair attempt or deterministic fallback. The interpretation separates observations from hypotheses, cites support and contradiction, explains actionable checks, and states material uncertainty/root-cause limits. Numeric grounding remains application-owned; production Gemini integration is configured separately and tested manually when credentials are available. Approximate size: **M**.
 
 ## DBADV-04 — HTML Report Generation (M)
 
@@ -44,7 +44,7 @@ The six tickets divide implementation ownership without changing project-level c
 - **Files/modules:** `services/analysis_service/app/reporting/`, `app/api/analyses.py`, HTML tests.
 - **Mocks / start now:** Contract C examples and mock pipeline outputs. Improve report layout/accessibility without React or a new business contract.
 - **Dependencies / tests:** Contract C and report routes. Test escaping, all report fields, links, form fields and page responses. Integration validation: run both demo commands and submit the rendered form.
-- **Definition of Done:** Developers can open either report; untrusted text is escaped; findings, citations, uncertainty and checks remain visible; form serializes Contract D. Approximate size: **M**.
+- **Definition of Done:** Developers can manually trigger an analysis, open either report, and see trusted impact statistics, support/contradiction, verification provenance, next investigation, uncertainty and missing evidence; untrusted text is escaped; form serializes Contract D. Approximate size: **M**.
 
 ## DBADV-05 — Analysis Persistence and Audit (M)
 

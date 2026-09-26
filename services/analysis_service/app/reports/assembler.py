@@ -4,6 +4,14 @@ from .data_builder import TrustedReportData
 
 
 class ReportAssembler:
+    @staticmethod
+    def _limitations(values: list[str], missing: list[str]) -> list[str]:
+        result = list(dict.fromkeys([*values, *missing]))
+        root_cause_limit = "Definitive root cause is not established by this evidence."
+        if root_cause_limit not in result:
+            result.append(root_cause_limit)
+        return result
+
     def assemble(
         self,
         package: AnalysisPackage,
@@ -25,11 +33,11 @@ class ReportAssembler:
                     facts=trusted_section.facts,
                     hypothesis=section.hypothesis,
                     recommended_checks=section.recommended_checks,
-                    limitations=section.limitations,
+                    limitations=self._limitations(section.limitations, package.missing_evidence),
                     verification=trusted_section.verification,
                     charts=trusted_section.charts,
                 )
                 for section in interpretation.sections
             ],
-            limitations=interpretation.limitations,
+            limitations=self._limitations(interpretation.limitations, package.missing_evidence),
         )

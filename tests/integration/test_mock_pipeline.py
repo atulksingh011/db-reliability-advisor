@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from services.analysis_service.app.adapters.mock import MockAdapter
+from services.analysis_service.app.ai.base import AIProvider
 from services.analysis_service.app.ai.mock_provider import MockAIProvider
 from services.analysis_service.app.analyzers.deterministic import DeterministicAnalyzer
 from services.analysis_service.app.contracts.models import AnalysisRequest
@@ -103,3 +104,52 @@ def test_connection_report_contains_trusted_values_and_contradiction() -> None:
     )
     assert [point.value for point in connections.series] == [25, 92]
     assert report.sections[0].hypothesis.contradicting_evidence_ids == ["E5", "E6"]
+
+
+def test_connection_report_exposes_illustrative_verification_and_limits() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), MockAIProvider(), AnalysisRepository(engine)
+    ).run(request_at(11), "connection-pressure")
+
+    verification = report.sections[0].verification
+    assert len(verification) == 6
+    assert all(item.mode == "illustrative" for item in verification)
+    assert verification[0].evidence_ids == ["E1"]
+    assert "Real production telemetry" in " ".join(report.limitations)
+    assert "Definitive root cause is not established" in " ".join(report.limitations)
+    assert "by client/application" in report.sections[0].recommended_checks[0]
+
+
+def test_connection_report_renders_support_and_contradiction_groups() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), MockAIProvider(), AnalysisRepository(engine)
+    ).run(request_at(11), "connection-pressure")
+
+    facts = report.sections[0].facts
+    supporting = {fact.evidence_ids[0] for fact in facts if fact.evidence_ids}
+    assert {"E1", "E2", "E3", "E4"}.issubset(supporting)
+    assert {"E5", "E6"}.issubset(supporting)
+
+
+class UnavailableProvider(AIProvider):
+    name = "unavailable"
+
+    def analyze(self, package):
+        raise RuntimeError("provider unavailable")
+
+
+def test_provider_failure_returns_deterministic_fallback_report() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), UnavailableProvider(), AnalysisRepository(engine)
+    ).run(request_at(11), "connection-pressure")
+
+    assert report.sections[0].title == "Deterministic findings"
+    assert "AI interpretation unavailable" in report.summary
+    assert report.sections[0].charts
+    assert report.sections[0].verification
