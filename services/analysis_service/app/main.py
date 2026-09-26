@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import make_asgi_app
 
 from .adapters.mock import MockAdapter
@@ -37,6 +40,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.feedback_repository = feedback_repository
     app.state.pipeline = pipeline
     app.state.settings = runtime_settings
+    app.mount(
+        "/static",
+        StaticFiles(directory=Path(__file__).parent / "reporting" / "static"),
+        name="static",
+    )
     app.include_router(health.router)
     app.include_router(analyses.pages_router)
     app.include_router(analyses.router)

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     ai_provider: str = "mock"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     database_url: str = "sqlite:///./reliability.db"
     mongodb_uri: str = "mongodb://localhost:27017/reliability_demo"
     prometheus_url: str = "http://localhost:9090"
