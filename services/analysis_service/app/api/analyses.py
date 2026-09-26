@@ -81,6 +81,11 @@ def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisAccep
     return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
+@router.get("/analyses")
+def list_analyses(request: Request, limit: int = 20) -> list[dict[str, Any]]:
+    return request.app.state.repository.list_runs(max(1, min(limit, 100)))
+
+
 @router.get("/analyses/{analysis_id}", response_model=AnalysisStatus)
 def get_analysis(analysis_id: str, request: Request) -> AnalysisStatus:
     run = request.app.state.repository.get_run(analysis_id)
@@ -95,6 +100,29 @@ def get_analysis_result(analysis_id: str, request: Request) -> ValidatedReport:
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis result not found")
     return ValidatedReport.model_validate(result)
+
+
+@router.get("/analyses/{analysis_id}/audit")
+def get_analysis_audit(analysis_id: str, request: Request) -> dict[str, Any]:
+    audit = request.app.state.repository.get_audit(analysis_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return audit
+
+
+@router.post(
+    "/analyses/{analysis_id}/replay",
+    response_model=AnalysisAccepted,
+    status_code=status.HTTP_201_CREATED,
+)
+def replay_analysis(analysis_id: str, request: Request) -> AnalysisAccepted:
+    try:
+        report = _pipeline(request).replay(analysis_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail="Analysis or Contract B snapshot not found"
+        ) from exc
+    return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
 def _mock_request() -> AnalysisRequest:

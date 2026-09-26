@@ -45,6 +45,16 @@ curl -X POST http://localhost:8000/api/v1/analyses \
 
 The API returns the analysis ID; open `/analyses/{analysisId}/report` for the HTML report. Contract A intentionally contains only `target`, `startTime`, and `endTime`. In development, the UI also exposes query-regression and connection-pressure fixture buttons; fixture selection stays outside Contract A and enters the same pipeline.
 
+Audit and replay API:
+
+```bash
+curl http://localhost:8000/api/v1/analyses
+curl http://localhost:8000/api/v1/analyses/AN-.../audit
+curl -X POST http://localhost:8000/api/v1/analyses/AN-.../replay
+```
+
+The audit API exposes immutable Contract A/B/C snapshots, deterministic findings, lifecycle events, ordered provider attempts, validation outcomes and fallback details. Replay creates a new analysis ID from the stored Contract B snapshot and never calls telemetry adapters. SQLite is an audit/history side path, not the normal evidence source. File-backed startup applies `alembic upgrade head`; the `analysis-data` Compose volume preserves records across restarts. Retention/cleanup is intentionally future work.
+
 The default `AI_PROVIDER=mock` is deterministic and suitable for local tests. To exercise Gemini, set `AI_PROVIDER=gemini`, provide `GEMINI_API_KEY`, and optionally change `GEMINI_MODEL` (default `gemini-3.8-flash`). Gemini supplies interpretation only: trusted values, charts, provenance, and verification queries come from Contract B/application code. Mock verification entries are explicitly labelled illustrative and were not executed.
 
 Reports distinguish status from hypothesis confidence, show supporting versus contradicting evidence, recommend a next investigation with its purpose, and keep limitations prominent. Feedback is submitted from the report form to Contract D and stored separately from analysis evidence.
