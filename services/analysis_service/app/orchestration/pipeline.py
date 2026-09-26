@@ -9,6 +9,7 @@ from ..contracts.models import AnalysisPackage, AnalysisRequest, Hypothesis, Val
 from ..evidence.builder import EvidenceBuilder
 from ..reports.assembler import ReportAssembler
 from ..reports.data_builder import TrustedReportDataBuilder
+from ..storage.error_sanitizer import classify_exception, sanitize_error_message
 from ..storage.repository import AnalysisRepository
 
 
@@ -60,7 +61,7 @@ class AnalysisPipeline:
             self.repository.save_result(analysis_id, report.model_dump(mode="json", by_alias=True))
             return report
         except Exception as exc:
-            self.repository.mark_failed(analysis_id, str(exc))
+            self.repository.mark_failed(analysis_id, classify_exception(exc).message)
             raise
 
     def replay(self, source_analysis_id: str) -> ValidatedReport:
@@ -93,7 +94,7 @@ class AnalysisPipeline:
             self.repository.save_result(analysis_id, report.model_dump(mode="json", by_alias=True))
             return report
         except Exception as exc:
-            self.repository.mark_failed(analysis_id, str(exc))
+            self.repository.mark_failed(analysis_id, classify_exception(exc).message)
             raise
 
     def _interpret(self, package, analysis_id: str) -> AIInterpretation:
@@ -110,13 +111,16 @@ class AnalysisPipeline:
                     self.provider.name,
                     interpretation.model_dump(mode="json", by_alias=True),
                     "rejected",
-                    exc.errors,
+                    [sanitize_error_message(error) for error in exc.errors],
                     model=getattr(self.provider, "model", None),
-                    error_category="validation",
+                    error_category="validation_error",
                 )
-                self.repository.save_validation(analysis_id, attempt_id, 1, False, exc.errors, True)
+                safe_errors = [sanitize_error_message(error) for error in exc.errors]
+                self.repository.save_validation(
+                    analysis_id, attempt_id, 1, False, safe_errors, True
+                )
                 try:
-                    repaired = self.provider.repair(package, exc.errors, raw_response)
+                    repaired = self.provider.repair(package, safe_errors, raw_response)
                     validated = self.validator.validate(repaired, package)
                     attempt_id = self.repository.save_ai_attempt(
                         analysis_id,
@@ -127,10 +131,13 @@ class AnalysisPipeline:
                     )
                     self.repository.save_validation(analysis_id, attempt_id, 2, True)
                 except Exception as repair_error:
+                    safe_repair_error = classify_exception(repair_error, context="repair")
                     self.repository.save_validation(
-                        analysis_id, None, 2, False, [str(repair_error)]
+                        analysis_id, None, 2, False, [safe_repair_error.message]
                     )
-                    return self._fallback(package, analysis_id, [*exc.errors, str(repair_error)])
+                    return self._fallback(
+                        package, analysis_id, [*safe_errors, safe_repair_error.message]
+                    )
             else:
                 attempt_id = self.repository.save_ai_attempt(
                     analysis_id,
@@ -142,22 +149,25 @@ class AnalysisPipeline:
                 self.repository.save_validation(analysis_id, attempt_id, 1, True)
             return validated
         except Exception as exc:
+            safe_error = classify_exception(exc, context="provider")
             if interpretation is not None:
                 payload = interpretation.model_dump(mode="json", by_alias=True)
             else:
-                payload = {"error": str(exc)}
+                payload = {"error": safe_error.message}
             attempt_id = self.repository.save_ai_attempt(
                 analysis_id,
                 self.provider.name,
                 payload,
                 "failed",
-                [str(exc)],
+                [safe_error.message],
                 model=getattr(self.provider, "model", None),
-                error_category=type(exc).__name__,
+                error_category=safe_error.category,
             )
-            self.repository.save_validation(analysis_id, attempt_id, 1, False, [str(exc)], True)
+            self.repository.save_validation(
+                analysis_id, attempt_id, 1, False, [safe_error.message], True
+            )
             try:
-                repaired = self.provider.repair(package, [str(exc)], raw_response)
+                repaired = self.provider.repair(package, [safe_error.message], raw_response)
                 validated = self.validator.validate(repaired, package)
                 attempt_id = self.repository.save_ai_attempt(
                     analysis_id,
@@ -169,8 +179,13 @@ class AnalysisPipeline:
                 self.repository.save_validation(analysis_id, attempt_id, 2, True)
                 return validated
             except Exception as repair_error:
-                self.repository.save_validation(analysis_id, None, 2, False, [str(repair_error)])
-                return self._fallback(package, analysis_id, [str(exc), str(repair_error)])
+                safe_repair_error = classify_exception(repair_error, context="repair")
+                self.repository.save_validation(
+                    analysis_id, None, 2, False, [safe_repair_error.message]
+                )
+                return self._fallback(
+                    package, analysis_id, [safe_error.message, safe_repair_error.message]
+                )
 
     def _fallback(self, package, analysis_id: str, errors: list[str]) -> AIInterpretation:
         fallback = AIInterpretation(

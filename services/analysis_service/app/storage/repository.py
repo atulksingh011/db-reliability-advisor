@@ -5,6 +5,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from ..contracts.models import AnalysisRequest
+from .error_sanitizer import sanitize_audit_value, sanitize_error_message
 from .models import (
     AIAttempt,
     AnalysisResult,
@@ -96,9 +97,11 @@ class AnalysisRepository:
                 attempt_number=previous + 1,
                 provider=provider,
                 model=model,
-                response_payload=response,
+                response_payload=sanitize_audit_value(response),
                 validation_status=validation_status,
-                validation_errors=validation_errors or [],
+                validation_errors=[
+                    sanitize_error_message(error) for error in (validation_errors or [])
+                ],
                 error_category=error_category,
                 started_at=started_at or _now(),
                 completed_at=completed_at or _now(),
@@ -124,7 +127,7 @@ class AnalysisRepository:
                     ai_attempt_id=attempt_id,
                     attempt_number=attempt_number,
                     passed=passed,
-                    errors=errors or [],
+                    errors=[sanitize_error_message(error) for error in (errors or [])],
                     repair_required=repair_required,
                 )
             )
@@ -133,7 +136,11 @@ class AnalysisRepository:
     def save_fallback(self, analysis_id: str, reason: list[str], report: dict[str, Any]) -> None:
         with Session(self.engine) as session:
             session.add(
-                FallbackOutcome(analysis_id=analysis_id, reason=reason, report_payload=report)
+                FallbackOutcome(
+                    analysis_id=analysis_id,
+                    reason=[sanitize_error_message(error) for error in reason],
+                    report_payload=sanitize_audit_value(report),
+                )
             )
             session.commit()
 
@@ -163,26 +170,17 @@ class AnalysisRepository:
             run = session.get(AnalysisRun, analysis_id)
             if run:
                 run.status, run.failed_at, run.updated_at = "failed", now, now
-                detail = {"reason": self._safe_error(reason)} if reason else None
+                detail = (
+                    {"reason": sanitize_error_message(reason, "Analysis failed.")}
+                    if reason
+                    else None
+                )
                 session.add(
                     LifecycleEvent(
                         analysis_id=analysis_id, status="failed", detail=detail, created_at=now
                     )
                 )
                 session.commit()
-
-    @staticmethod
-    def _safe_error(error: str | None) -> str | None:
-        if not error:
-            return None
-        lowered = error.lower()
-        return (
-            "provider error redacted"
-            if any(
-                secret in lowered for secret in ("api_key", "authorization", "password", "token")
-            )
-            else error[:500]
-        )
 
     @staticmethod
     def _run_payload(run: AnalysisRun) -> dict[str, Any]:

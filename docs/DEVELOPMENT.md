@@ -25,6 +25,8 @@ curl -X POST http://localhost:8000/api/v1/analyses/AN-.../replay
 
 The application applies Alembic migrations on startup for durable SQLite URLs. Docker stores the database at `/data/reliability.db` on the named `analysis-data` volume, so stopping and restarting containers does not remove audit history. Do not use SQLite to hydrate live Contract B; replay is the explicit exception and uses only the selected persisted snapshot. Feedback remains behind `FeedbackRepository` and is owned by DBADV-06.
 
+Audit error details are sanitized before persistence. Durable history records safe categories and high-level diagnostics; raw provider exceptions, credentials, and upstream response bodies are never part of the audit API.
+
 ## Ticket entry points
 
 - **DBADV-01:** `docker-compose.yml`, `infra/`, `services/orders_api/`, `services/scenario_runner/`, and `scripts/`. Mock fixtures and the development alert bridge are available; real workloads, triggers and telemetry generation remain future work.
