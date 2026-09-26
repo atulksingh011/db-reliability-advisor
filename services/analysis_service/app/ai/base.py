@@ -40,3 +40,12 @@ class AIProvider(ABC):
     @abstractmethod
     def analyze(self, package: AnalysisPackage) -> AIInterpretation:
         """Return a structured interpretation; never mutate evidence sources."""
+
+    def repair(
+        self,
+        package: AnalysisPackage,
+        errors: list[str],
+        original_response: str | None = None,
+    ) -> AIInterpretation:
+        """Optionally repair one malformed or ungrounded structured response."""
+        raise RuntimeError("This AI provider does not support structured-output repair")

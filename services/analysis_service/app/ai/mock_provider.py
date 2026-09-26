@@ -72,12 +72,19 @@ class MockAIProvider(AIProvider):
                         contradicting_evidence_ids=["E5", "E6"],
                     ),
                     recommended_checks=[
-                        "Inspect client pool sizing and checkout wait time.",
-                        "Correlate connection failures with the latency window.",
+                        (
+                            "Inspect active connections, pool utilization, and checkout wait time "
+                            "by client/application to determine whether one workload is consuming "
+                            "a disproportionate share of available connections."
+                        ),
+                        (
+                            "Correlate connection failures with the latency and error windows to "
+                            "determine whether failed checkouts explain the observed impact."
+                        ),
                     ],
                     limitations=[
                         "Mock / illustrative data cannot identify which client exhausted "
-                        "connections."
+                        "connections; definitive root cause is not established."
                     ],
                     deterministic_finding_ids=["D1", "D2", "D3"],
                 )

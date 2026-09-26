@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..contracts.models import (
     AnalysisAccepted,
@@ -27,8 +27,37 @@ def report_index(request: Request) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(
         request=request,
         name="index.html",
-        context={"reports": request.app.state.repository.list_reports()},
+        context={
+            "reports": request.app.state.repository.list_reports(),
+            "development": request.app.state.settings.app_env == "development",
+        },
     )
+
+
+@pages_router.post("/analyses/manual", response_class=HTMLResponse)
+async def run_manual_analysis(request: Request) -> Response:
+    form = await request.form()
+    values = {
+        "target": str(form.get("target", "")).strip(),
+        "startTime": str(form.get("startTime", "")).strip(),
+        "endTime": str(form.get("endTime", "")).strip(),
+    }
+    try:
+        payload = AnalysisRequest.model_validate(values)
+        report = _pipeline(request).run(payload)
+    except (ValueError, TypeError) as exc:
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "reports": request.app.state.repository.list_reports(),
+                "development": request.app.state.settings.app_env == "development",
+                "form_error": str(exc),
+                "form_values": values,
+            },
+            status_code=422,
+        )
+    return RedirectResponse(f"/analyses/{report.analysis_id}/report", status_code=303)
 
 
 @pages_router.get("/analyses/{analysis_id}/report", response_class=HTMLResponse)

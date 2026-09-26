@@ -14,4 +14,8 @@ def test_verification_queries_come_from_evidence_provenance() -> None:
 
     trusted = TrustedReportDataBuilder().build(package)
 
-    assert [item.query for item in trusted.sections["default"].verification] == ["trusted-query"]
+    verification = trusted.sections["default"].verification
+    assert verification[0].query == "trusted-query"
+    assert verification[0].system == "prometheus"
+    assert verification[0].mode == "actual"
+    assert verification[0].evidence_ids == ["E2"]

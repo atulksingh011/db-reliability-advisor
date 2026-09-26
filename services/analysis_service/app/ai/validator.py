@@ -18,8 +18,19 @@ class GroundingValidator:
         finding_ids = {item.id for item in package.deterministic_findings}
         errors: list[str] = []
 
+        if not interpretation.sections:
+            errors.append("Interpretation must contain at least one section")
+
         for section in interpretation.sections:
             hypothesis = section.hypothesis
+            if not hypothesis.supporting_evidence_ids:
+                errors.append(f"Hypothesis in {section.id} must cite supporting evidence")
+            if not section.recommended_checks and interpretation.status in {"warning", "critical"}:
+                errors.append(
+                    f"Problem report section {section.id} must include recommended checks"
+                )
+            if not section.limitations:
+                errors.append(f"Hypothesis in {section.id} must include limitations")
             errors.extend(
                 self._unknown_references(
                     hypothesis.supporting_evidence_ids,
@@ -28,6 +39,11 @@ class GroundingValidator:
                     "evidence",
                 )
             )
+
+            unsafe_terms = ("drop ", "delete ", "update ", "insert ", "terminate ", "kill ")
+            for check in section.recommended_checks:
+                if any(term in check.lower() for term in unsafe_terms):
+                    errors.append(f"Recommended check in {section.id} is not read-only: {check}")
             errors.extend(
                 self._unknown_references(
                     section.supporting_evidence_ids,

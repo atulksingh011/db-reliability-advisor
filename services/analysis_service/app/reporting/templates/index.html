@@ -1,26 +1,19 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Database Reliability Advisor</title>
-  <style>
-    body{font:16px/1.5 system-ui,sans-serif;max-width:960px;margin:3rem auto;padding:0 1rem;color:#17202a;background:#f5f7fa}
-    h1,h2{line-height:1.2}a{color:#075bb5}.card{background:white;padding:1.25rem;margin:1rem 0;border:1px solid #dce2e8;border-radius:10px}
-  </style>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Database Reliability Advisor</title><link rel="stylesheet" href="/static/report.css">
 </head>
-<body>
-  <h1>Database Reliability Advisor</h1>
-  <p>Mock-first reliability analysis reports. Run a demo with <code>make demo-query</code> or <code>make demo-connection</code>.</p>
-  <h2>Recent reports</h2>
-  {% if reports %}
-    {% for report in reports %}
-    <article class="card">
-      <h3><a href="/analyses/{{ report.analysisId }}/report">{{ report.target }} — {{ report.status }}</a></h3>
-      <p>{{ report.summary }}</p>
-      <small>{{ report.analysisId }}</small>
-    </article>
-    {% endfor %}
-  {% else %}<p>No reports yet. Run one of the mock demo commands.</p>{% endif %}
-</body>
-</html>
+<body><main class="shell">
+  <header class="page-header"><p class="eyebrow">Database Reliability Advisor</p><h1>Run an analysis</h1><p class="lede">Turn a bounded observation window into an evidence-backed reliability report.</p></header>
+  <section class="panel" aria-labelledby="manual-heading"><h2 id="manual-heading">Manual analysis</h2>
+    {% if form_error %}<p class="alert" role="alert">{{ form_error }}</p>{% endif %}
+    <form method="post" action="/analyses/manual" class="analysis-form">
+      <label for="target">Target</label><input id="target" name="target" required value="{{ form_values.target if form_values else 'orders-api' }}">
+      <div class="form-grid"><div><label for="startTime">Start</label><input id="startTime" name="startTime" type="datetime-local" required value="{{ form_values.startTime if form_values else '' }}"></div><div><label for="endTime">End</label><input id="endTime" name="endTime" type="datetime-local" required value="{{ form_values.endTime if form_values else '' }}"></div></div>
+      <p class="help">Use a window no longer than the configured maximum.</p><button type="submit" class="button primary">Run analysis</button>
+    </form>
+  </section>
+  {% if development %}<section class="panel" aria-labelledby="demo-heading"><h2 id="demo-heading">Development demos</h2><p class="muted">These controls select local fixtures before entering the same analysis pipeline.</p><div class="button-row"><form method="post" action="/api/v1/dev/mock/query-regression"><button class="button" type="submit">Run query regression demo</button></form><form method="post" action="/api/v1/dev/mock/connection-pressure"><button class="button" type="submit">Run connection pressure demo</button></form></div></section>{% endif %}
+  <section aria-labelledby="recent-heading"><h2 id="recent-heading">Recent analyses</h2>{% if reports %}{% for report in reports %}<article class="panel report-row"><div><h3><a href="/analyses/{{ report.analysisId }}/report">{{ report.target }}</a></h3><p>{{ report.summary }}</p></div><span class="status status-{{ report.status }}">{{ report.status }}</span></article>{% endfor %}{% else %}<p class="muted">No reports yet. Run an analysis above.</p>{% endif %}</section>
+</main></body></html>

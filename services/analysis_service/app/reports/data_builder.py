@@ -41,9 +41,11 @@ class TrustedReportDataBuilder:
                 system=item.source.system,
                 query=item.source.query,
                 label=self._label(item.name),
+                mode="illustrative" if item.source.system == "mock" else "actual",
+                evidence_ids=[item.id],
             )
             for item in package.evidence
-            if item.source.system in {"prometheus", "loki"} and item.source.query
+            if item.source.query
         ]
         trusted = TrustedReportSection(
             facts=facts,
@@ -62,12 +64,20 @@ class TrustedReportDataBuilder:
         unit = evidence.unit or (value.get("unit") if isinstance(value, dict) else None)
         if isinstance(value, dict) and "before" in value and "after" in value:
             suffix = f" {unit}" if unit else ""
-            text = (
-                f"{cls._label(evidence.name)} changed from {value['before']}{suffix} "
-                f"to {value['after']}{suffix}."
-            )
+            if evidence.name == "query_plan" and value["before"] == value["after"]:
+                text = f"Query plan remained {value['after']}."
+            else:
+                text = (
+                    f"{cls._label(evidence.name)} changed from {value['before']}{suffix} "
+                    f"to {value['after']}{suffix}."
+                )
         else:
-            text = f"{cls._label(evidence.name)}: {value}."
+            if evidence.name == "connection_failures" and isinstance(value, dict):
+                text = (
+                    f"Connection failures were present ({value.get('count', 'unknown')} observed)."
+                )
+            else:
+                text = f"{cls._label(evidence.name)}: {value}."
         return ReportFact(text=text, evidence_ids=[evidence.id], deterministic_finding_ids=[])
 
     @classmethod
