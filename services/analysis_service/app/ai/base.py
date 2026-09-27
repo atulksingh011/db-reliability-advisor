@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..contracts.models import AnalysisPackage, Hypothesis, to_camel
+from ..contracts.models import AnalysisPackage, to_camel
 
 
 class StrictAIModel(BaseModel):
@@ -14,12 +14,27 @@ class StrictAIModel(BaseModel):
     )
 
 
+class AIHypothesis(StrictAIModel):
+    text: str
+    confidence: Literal["low", "medium", "high"]
+    mode: Literal["possible_explanation", "best_supported_explanation", "insufficient_evidence"]
+    supporting_evidence_ids: list[str]
+    contradicting_evidence_ids: list[str]
+
+
+class RecommendedCheck(StrictAIModel):
+    type: Literal["inspect", "compare", "query", "verify", "identify"]
+    description: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class AIInterpretationSection(StrictAIModel):
     id: str
     category: str
     title: str
-    hypothesis: Hypothesis
-    recommended_checks: list[str]
+    hypothesis: AIHypothesis
+    recommended_checks: list[RecommendedCheck]
     limitations: list[str]
     supporting_evidence_ids: list[str] = Field(default_factory=list)
     contradicting_evidence_ids: list[str] = Field(default_factory=list)
@@ -27,7 +42,6 @@ class AIInterpretationSection(StrictAIModel):
 
 
 class AIInterpretation(StrictAIModel):
-
     status: Literal["healthy", "warning", "critical", "insufficient_data", "failed"]
     summary: str = Field(min_length=1)
     sections: list[AIInterpretationSection]

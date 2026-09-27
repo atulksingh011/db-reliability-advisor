@@ -18,6 +18,7 @@ class TrustedReportSection:
     facts: list[ReportFact]
     charts: list[ReportChart]
     verification: list[VerificationQuery]
+    chart_evidence_ids: dict[str, list[str]]
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,7 @@ class TrustedReportDataBuilder:
         facts = [self._fact(item) for item in package.evidence]
         facts.extend(self._finding_fact(finding) for finding in package.deterministic_findings)
         charts = [
-            self._chart(item)
-            for item in package.evidence
-            if self._is_numeric_comparison(item)
+            self._chart(item) for item in package.evidence if self._is_numeric_comparison(item)
         ]
         verification = [
             VerificationQuery(
@@ -51,6 +50,14 @@ class TrustedReportDataBuilder:
             facts=facts,
             charts=charts,
             verification=verification,
+            chart_evidence_ids={
+                chart.id: [item.id]
+                for chart, item in zip(
+                    charts,
+                    [item for item in package.evidence if self._is_numeric_comparison(item)],
+                    strict=True,
+                )
+            },
         )
         return TrustedReportData(sections={"default": trusted})
 

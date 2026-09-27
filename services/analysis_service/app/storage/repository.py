@@ -78,6 +78,7 @@ class AnalysisRepository:
         validation_errors: list[str] | None = None,
         *,
         model: str | None = None,
+        prompt_version: str | None = None,
         error_category: str | None = None,
         started_at: datetime | None = None,
         completed_at: datetime | None = None,
@@ -97,6 +98,7 @@ class AnalysisRepository:
                 attempt_number=previous + 1,
                 provider=provider,
                 model=model,
+                prompt_version=prompt_version,
                 response_payload=sanitize_audit_value(response),
                 validation_status=validation_status,
                 validation_errors=[
@@ -269,6 +271,7 @@ class AnalysisRepository:
                         "attemptNumber": a.attempt_number,
                         "provider": a.provider,
                         "model": a.model,
+                        "promptVersion": a.prompt_version,
                         "response": a.response_payload,
                         "validationStatus": a.validation_status,
                         "validationErrors": a.validation_errors,

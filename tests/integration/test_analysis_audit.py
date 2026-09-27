@@ -6,7 +6,12 @@ from sqlalchemy import text
 
 from services.analysis_service.app.adapters.mock import MockAdapter
 from services.analysis_service.app.ai.base import AIInterpretation, AIProvider
+from services.analysis_service.app.ai.gemini_provider import GeminiOutputError
 from services.analysis_service.app.ai.mock_provider import MockAIProvider
+from services.analysis_service.app.ai.prompts import (
+    INTERPRETATION_PROMPT_VERSION,
+    REPAIR_PROMPT_VERSION,
+)
 from services.analysis_service.app.contracts.models import AnalysisRequest
 from services.analysis_service.app.orchestration.pipeline import AnalysisPipeline
 from services.analysis_service.app.storage.database import (
@@ -81,6 +86,41 @@ class InvalidThenSecretRepairProvider(AIProvider):
         raise RuntimeError("x-api-key: TEST_X_API_KEY client_secret=TEST_CLIENT_SECRET")
 
 
+class MalformedProvider(AIProvider):
+    name = "malformed-provider"
+    model = "test-model"
+
+    def __init__(self):
+        self.raw_response = '{"summary":"secret-bearing malformed output"}'
+        self.repair_input = None
+
+    def analyze(self, package):
+        raise GeminiOutputError("invalid structured output", self.raw_response)
+
+    def repair(self, package, errors, original_response=None):
+        self.repair_input = original_response
+        return MockAIProvider().analyze(package)
+
+
+class InvalidRepairProvider(AIProvider):
+    name = "invalid-repair-provider"
+    model = "test-model"
+
+    def analyze(self, package):
+        response = MockAIProvider().analyze(package)
+        section = response.sections[0].model_copy(
+            update={
+                "hypothesis": response.sections[0].hypothesis.model_copy(
+                    update={"supporting_evidence_ids": ["E999"]}
+                )
+            }
+        )
+        return response.model_copy(update={"sections": [section]})
+
+    def repair(self, package, errors, original_response=None):
+        return self.analyze(package)
+
+
 class InvalidReferenceProvider(AIProvider):
     name = "invalid-reference-provider"
 
@@ -121,7 +161,8 @@ def test_provider_fallback_records_attempt_validation_and_outcome() -> None:
 
     audit = repository.get_audit(report.analysis_id)
     assert audit["run"]["status"] == "completed_with_fallback"
-    assert audit["aiAttempts"][-1]["validationStatus"] == "fallback"
+    assert audit["aiAttempts"][-1]["validationStatus"] == "failed"
+    assert audit["fallback"]
     assert audit["validation"][0]["passed"] is False
     assert repository.count_records(ValidationOutcome) == 2
     assert repository.count_records(FallbackOutcome) == 1
@@ -194,3 +235,45 @@ def test_safe_validation_error_remains_diagnostic() -> None:
     audit = repository.get_audit(report.analysis_id)
 
     assert any("Unknown evidence ID E999" in error for error in audit["validation"][0]["errors"])
+
+
+def test_malformed_provider_raw_response_reaches_repair_and_prompt_version_is_audited() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    repository = AnalysisRepository(engine)
+    provider = MalformedProvider()
+
+    report = AnalysisPipeline(MockAdapter(), provider, repository).run(
+        request(), "query-regression"
+    )
+    audit = repository.get_audit(report.analysis_id)
+
+    assert provider.repair_input == provider.raw_response
+    assert [attempt["promptVersion"] for attempt in audit["aiAttempts"]] == [
+        INTERPRETATION_PROMPT_VERSION,
+        REPAIR_PROMPT_VERSION,
+    ]
+    assert audit["aiAttempts"][0]["response"] == {"error": "AI provider request failed."}
+    assert provider.raw_response not in json.dumps(audit)
+
+
+def test_rejected_repair_is_attempt_two_and_fallback_is_separate() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    repository = AnalysisRepository(engine)
+
+    report = AnalysisPipeline(MockAdapter(), InvalidRepairProvider(), repository).run(
+        request(), "query-regression"
+    )
+    audit = repository.get_audit(report.analysis_id)
+
+    assert [attempt["attemptNumber"] for attempt in audit["aiAttempts"]] == [1, 2]
+    assert [attempt["validationStatus"] for attempt in audit["aiAttempts"]] == [
+        "rejected",
+        "rejected",
+    ]
+    assert [item["attemptNumber"] for item in audit["validation"]] == [1, 2]
+    assert audit["fallback"]
+    assert audit["aiAttempts"][-1]["response"]["sections"][0]["hypothesis"][
+        "supportingEvidenceIds"
+    ] == ["E999"]

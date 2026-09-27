@@ -54,6 +54,71 @@ def test_report_template_escapes_ai_controlled_text() -> None:
     assert "<script>alert" not in rendered
 
 
+def test_report_template_renders_hypothesis_precision_copy_and_insufficient_state() -> None:
+    from services.analysis_service.app.reporting.renderer import TEMPLATES
+
+    section = {
+        "id": "test",
+        "title": "Test section",
+        "category": "database_query",
+        "hypothesis": {
+            "text": "The query plan is the best-supported explanation.",
+            "confidence": "medium",
+        },
+        "facts": [],
+        "recommendedChecks": [],
+        "limitations": ["Missing production evidence"],
+        "verification": [
+            {
+                "system": "mock",
+                "mode": "illustrative",
+                "query": "query <safe>",
+                "evidenceIds": ["E1"],
+            }
+        ],
+        "charts": [
+            {
+                "id": "request-p95-ms",
+                "title": "Request p95",
+                "unit": "percent",
+                "series": [{"label": "Before", "value": 1.5}, {"label": "After", "value": 2.9}],
+            }
+        ],
+    }
+    rendered = TEMPLATES.env.get_template("report.html").render(
+        report={
+            "target": "orders-api",
+            "status": "warning",
+            "window": {"startTime": "start", "endTime": "end"},
+            "summary": "A qualitative query regression is visible.",
+            "analysisId": "AN-TEST",
+            "sections": [section],
+            "limitations": [],
+        }
+    )
+    assert "The query plan is the best-supported explanation." in rendered
+    assert "1.5%" in rendered and "2.9%" in rendered
+    assert "Copy query" in rendered
+    assert "query &lt;safe&gt;" in rendered
+
+    insufficient = TEMPLATES.env.get_template("report.html").render(
+        report={
+            **{
+                "target": "orders-api",
+                "status": "insufficient_data",
+                "window": {"startTime": "start", "endTime": "end"},
+                "summary": "There is not enough evidence.",
+                "analysisId": "AN-TEST",
+                "limitations": ["Missing production evidence"],
+            },
+            "sections": [section],
+        }
+    )
+    assert "Evidence status" in insufficient
+    assert "Likely issue" not in insufficient
+    assert "Hypothesis confidence" not in insufficient
+
+
 def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
     monkeypatch.setenv("APP_ENV", "production")
