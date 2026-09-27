@@ -48,6 +48,10 @@ class GroundingValidator:
         r"increase|decrease|scale|apply|set|alter|provision|reconfigure)\b",
         re.IGNORECASE,
     )
+    _investigation_action_pattern = re.compile(
+        r"^\s*(inspect|compare|query|verify|identify|review|correlate|run|check|examine|measure)\b",
+        re.IGNORECASE,
+    )
     _category_terms = {
         "database_query": {
             "query",
@@ -76,6 +80,12 @@ class GroundingValidator:
         "database_connections": {"connection_pressure", "latency_percent_change"},
         "deterministic_analysis": set(),
         "unknown": set(),
+    }
+    _category_anchor_terms = {
+        "database_query": {"index", "plan", "scan", "document", "execution"},
+        "database_connections": {"connection", "pool", "checkout", "failure", "pressure"},
+        "deterministic_analysis": {"finding", "measurement", "evidence"},
+        "unknown": {"unknown", "insufficient", "evidence"},
     }
 
     def validate(
@@ -189,6 +199,11 @@ class GroundingValidator:
                     errors.append(
                         f"Recommended check in {section.id} is not read-only: {check.description}"
                     )
+                if not self._investigation_action_pattern.search(check.description):
+                    errors.append(
+                        f"Recommended check in {section.id} must begin with a read-only "
+                        f"investigation action: {check.description}"
+                    )
                 if not check.evidence_ids:
                     errors.append(f"Recommended check in {section.id} must cite evidence")
 
@@ -221,6 +236,10 @@ class GroundingValidator:
         text_words = set(re.findall(r"[a-z]+", hypothesis.text.lower()))
         if not text_words.intersection(self._category_terms[category]):
             errors.append(f"Hypothesis in {section.id} does not describe its supported category")
+        if not text_words.intersection(self._category_anchor_terms[category]):
+            errors.append(
+                f"Hypothesis in {section.id} does not name a mechanism supported by its findings"
+            )
 
         relevant = [
             finding
@@ -250,7 +269,7 @@ class GroundingValidator:
                 f"{context} contains an authoritative numeric claim {numeric.group(0).strip()}"
             )
         causal = self._causal_pattern.search(text)
-        if context.startswith("hypothesis") and causal:
+        if context.startswith(("summary", "hypothesis")) and causal:
             issues.append(f"{context} contains unsupported causal wording: {text}")
         return issues
 

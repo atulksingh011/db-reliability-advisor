@@ -85,6 +85,45 @@ def test_validator_accepts_qualified_supported_connection_claim() -> None:
 
 
 @pytest.mark.parametrize(
+    "description",
+    ["Add a new index on customerId.", "Tune the MongoDB connection pool size."],
+)
+def test_validator_rejects_recommendations_without_investigation_action(
+    description: str,
+) -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    interpretation = deepcopy(MockAIProvider().analyze(package))
+    interpretation.sections[0].recommended_checks[0].description = description
+    with pytest.raises(GroundingValidationError, match="read-only investigation action"):
+        GroundingValidator().validate(interpretation, package)
+
+
+def test_validator_rejects_unsupported_causality_in_summary() -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    interpretation = deepcopy(MockAIProvider().analyze(package))
+    interpretation.summary = "The deployment broke the index."
+    with pytest.raises(GroundingValidationError, match="summary.*causal"):
+        GroundingValidator().validate(interpretation, package)
+
+
+@pytest.mark.parametrize(
+    "hypothesis",
+    [
+        "Network saturation is the best-supported explanation for query latency.",
+        "CPU starvation is consistent with query latency.",
+    ],
+)
+def test_validator_rejects_unsupported_mechanisms_with_supported_category_keyword(
+    hypothesis: str,
+) -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    interpretation = deepcopy(MockAIProvider().analyze(package))
+    interpretation.sections[0].hypothesis.text = hypothesis
+    with pytest.raises(GroundingValidationError, match="mechanism supported"):
+        GroundingValidator().validate(interpretation, package)
+
+
+@pytest.mark.parametrize(
     ("fixture", "field", "value"),
     [
         ("scenario-a-contract-b.example.json", "summary", "Latency increased by 200%"),
