@@ -93,9 +93,11 @@ class Hypothesis(ContractModel):
 
 
 class VerificationQuery(ContractModel):
-    system: Literal["prometheus", "loki"]
+    system: Literal["prometheus", "loki", "mongodb", "mock"]
     query: str
     label: str | None = None
+    mode: Literal["actual", "illustrative"] = "actual"
+    evidence_ids: list[str] = Field(default_factory=list)
 
 
 class ChartPoint(ContractModel):

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..contracts.models import (
     AnalysisAccepted,
@@ -27,8 +27,37 @@ def report_index(request: Request) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(
         request=request,
         name="index.html",
-        context={"reports": request.app.state.repository.list_reports()},
+        context={
+            "reports": request.app.state.repository.list_reports(),
+            "development": request.app.state.settings.app_env == "development",
+        },
     )
+
+
+@pages_router.post("/analyses/manual", response_class=HTMLResponse)
+async def run_manual_analysis(request: Request) -> Response:
+    form = await request.form()
+    values = {
+        "target": str(form.get("target", "")).strip(),
+        "startTime": str(form.get("startTime", "")).strip(),
+        "endTime": str(form.get("endTime", "")).strip(),
+    }
+    try:
+        payload = AnalysisRequest.model_validate(values)
+        report = _pipeline(request).run(payload)
+    except (ValueError, TypeError) as exc:
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "reports": request.app.state.repository.list_reports(),
+                "development": request.app.state.settings.app_env == "development",
+                "form_error": str(exc),
+                "form_values": values,
+            },
+            status_code=422,
+        )
+    return RedirectResponse(f"/analyses/{report.analysis_id}/report", status_code=303)
 
 
 @pages_router.get("/analyses/{analysis_id}/report", response_class=HTMLResponse)
@@ -52,6 +81,11 @@ def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisAccep
     return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
+@router.get("/analyses")
+def list_analyses(request: Request, limit: int = 20) -> list[dict[str, Any]]:
+    return request.app.state.repository.list_runs(max(1, min(limit, 100)))
+
+
 @router.get("/analyses/{analysis_id}", response_model=AnalysisStatus)
 def get_analysis(analysis_id: str, request: Request) -> AnalysisStatus:
     run = request.app.state.repository.get_run(analysis_id)
@@ -66,6 +100,29 @@ def get_analysis_result(analysis_id: str, request: Request) -> ValidatedReport:
     if result is None:
         raise HTTPException(status_code=404, detail="Analysis result not found")
     return ValidatedReport.model_validate(result)
+
+
+@router.get("/analyses/{analysis_id}/audit")
+def get_analysis_audit(analysis_id: str, request: Request) -> dict[str, Any]:
+    audit = request.app.state.repository.get_audit(analysis_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return audit
+
+
+@router.post(
+    "/analyses/{analysis_id}/replay",
+    response_model=AnalysisAccepted,
+    status_code=status.HTTP_201_CREATED,
+)
+def replay_analysis(analysis_id: str, request: Request) -> AnalysisAccepted:
+    try:
+        report = _pipeline(request).replay(analysis_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail="Analysis or Contract B snapshot not found"
+        ) from exc
+    return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
 def _mock_request() -> AnalysisRequest:

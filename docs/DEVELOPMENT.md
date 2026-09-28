@@ -13,6 +13,20 @@ make lint
 
 The demo commands print the report URL. Tests use temporary SQLite databases and require neither Gemini credentials nor Docker. `make smoke` validates the running Compose stack.
 
+### Analysis audit
+
+Use the following routes after a demo or manual run:
+
+```bash
+curl http://localhost:8000/api/v1/analyses
+curl http://localhost:8000/api/v1/analyses/AN-.../audit
+curl -X POST http://localhost:8000/api/v1/analyses/AN-.../replay
+```
+
+The application applies Alembic migrations on startup for durable SQLite URLs. Docker stores the database at `/data/reliability.db` on the named `analysis-data` volume, so stopping and restarting containers does not remove audit history. Do not use SQLite to hydrate live Contract B; replay is the explicit exception and uses only the selected persisted snapshot. Feedback remains behind `FeedbackRepository` and is owned by DBADV-06.
+
+Audit error details are sanitized before persistence. Durable history records safe categories and high-level diagnostics; raw provider exceptions, credentials, and upstream response bodies are never part of the audit API.
+
 ## Ticket entry points
 
 - **DBADV-01:** `docker-compose.yml`, `infra/`, `services/orders_api/`, `services/scenario_runner/`, and `scripts/`. Mock fixtures and the development alert bridge are available; real workloads, triggers and telemetry generation remain future work.

@@ -16,7 +16,7 @@ Provenance is flexible: use `timestamp` for point events, `observationWindow` (`
 
 ### Contract C — AI/Validator to renderer
 
-Contains status, summary, categorized sections, facts and citations, explicitly labelled hypotheses with supporting and contradicting evidence IDs, confidence, recommended checks, limitations, verification queries and chart-friendly deterministic data. It is structured data, never AI-authored HTML.
+Contains status, summary, categorized sections, facts and citations, explicitly labelled hypotheses with supporting and contradicting evidence IDs, confidence, recommended checks, limitations, verification queries and chart-friendly deterministic data. Verification entries retain their source system, related evidence IDs, and whether a query is actual or illustrative. Mock queries are displayed as illustrative and must not be described as executed. It is structured data, never AI-authored HTML.
 
 ### Contract D — report to Feedback Service
 
