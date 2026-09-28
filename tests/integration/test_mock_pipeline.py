@@ -9,6 +9,7 @@ from services.analysis_service.app.analyzers.deterministic import DeterministicA
 from services.analysis_service.app.contracts.models import AnalysisRequest
 from services.analysis_service.app.evidence.builder import EvidenceBuilder
 from services.analysis_service.app.orchestration.pipeline import AnalysisPipeline
+from services.analysis_service.app.reporting.renderer import TEMPLATES
 from services.analysis_service.app.storage.database import (
     create_database_engine,
     initialize_database,
@@ -153,3 +154,35 @@ def test_provider_failure_returns_deterministic_fallback_report() -> None:
     assert "AI interpretation unavailable" in report.summary
     assert report.sections[0].charts
     assert report.sections[0].verification
+
+
+def test_query_fallback_report_answers_the_five_engineer_questions() -> None:
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    report = AnalysisPipeline(
+        MockAdapter(), UnavailableProvider(), AnalysisRepository(engine)
+    ).run(request_at(10), "query-regression")
+    section = report.sections[0]
+    html = TEMPLATES.env.get_template("report.html").render(
+        report=report.model_dump(mode="json", by_alias=True)
+    )
+
+    assert "200" in report.summary and "1000" in report.summary
+    assert "documents examined rose" in report.summary
+    assert {"request-p95-ms", "documents-examined", "documents-returned", "scan-ratio"} <= {
+        chart.id for chart in section.charts
+    }
+    fact_text = " ".join(fact.text for fact in section.facts)
+    assert {"IXSCAN", "COLLSCAN", "400%"} <= set(fact_text.replace(".", " ").split())
+    scan_ratio = next(chart for chart in section.charts if chart.id == "scan-ratio")
+    assert [point.value for point in scan_ratio.series] == [20, 4000]
+    assert section.recommended_checks[0].startswith("Inspect the affected query")
+    assert "system.profile" in " ".join(item.query for item in section.verification)
+    assert "NOT EXECUTED IN THIS MOCK SCENARIO" in html
+    assert "What evidence supports this?" in html
+    assert all(value in html for value in ["200", "1000", "200000", "50", "IXSCAN", "COLLSCAN"])
+    assert "400%" in html and "20.0" in html and "4000.0" in html
+    assert "No contradicting evidence was identified." in html
+    assert "Not applicable" in html
+    assert "Deployment: {" not in html
+    assert "Evidence: ;" not in html

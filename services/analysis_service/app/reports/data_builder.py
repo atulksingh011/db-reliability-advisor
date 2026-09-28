@@ -32,32 +32,30 @@ class TrustedReportDataBuilder:
     def build(self, package: AnalysisPackage) -> TrustedReportData:
         facts = [self._fact(item) for item in package.evidence]
         facts.extend(self._finding_fact(finding) for finding in package.deterministic_findings)
-        charts = [
-            self._chart(item) for item in package.evidence if self._is_numeric_comparison(item)
-        ]
+        numeric_evidence = [item for item in package.evidence if self._is_numeric_comparison(item)]
+        charts = [self._chart(item) for item in numeric_evidence]
+        charts.extend(
+            self._finding_chart(finding)
+            for finding in package.deterministic_findings
+            if finding.rule == "scan_ratio_change"
+        )
         verification = [
-            VerificationQuery(
-                system=item.source.system,
-                query=item.source.query,
-                label=self._label(item.name),
-                mode="illustrative" if item.source.system == "mock" else "actual",
-                evidence_ids=[item.id],
-            )
+            self._verification_query(package.target, item)
             for item in package.evidence
-            if item.source.query
+            if item.source.query and item.name != "deployment"
         ]
+        chart_evidence_ids = {
+            chart.id: [item.id]
+            for chart, item in zip(charts[: len(numeric_evidence)], numeric_evidence, strict=True)
+        }
+        for finding in package.deterministic_findings:
+            if finding.rule == "scan_ratio_change":
+                chart_evidence_ids["scan-ratio"] = finding.evidence_ids
         trusted = TrustedReportSection(
             facts=facts,
             charts=charts,
             verification=verification,
-            chart_evidence_ids={
-                chart.id: [item.id]
-                for chart, item in zip(
-                    charts,
-                    [item for item in package.evidence if self._is_numeric_comparison(item)],
-                    strict=True,
-                )
-            },
+            chart_evidence_ids=chart_evidence_ids,
         )
         return TrustedReportData(sections={"default": trusted})
 
@@ -69,7 +67,12 @@ class TrustedReportDataBuilder:
     def _fact(cls, evidence: Evidence) -> ReportFact:
         value = evidence.value
         unit = evidence.unit or (value.get("unit") if isinstance(value, dict) else None)
-        if isinstance(value, dict) and "before" in value and "after" in value:
+        if evidence.name == "deployment" and isinstance(value, dict):
+            service = value.get("service", "unknown service")
+            version = value.get("version", "unknown version")
+            observed_at = evidence.timestamp or value.get("timestamp", "unknown time")
+            text = f"Deployment marker observed for {service}, version {version}, at {observed_at}."
+        elif isinstance(value, dict) and "before" in value and "after" in value:
             suffix = f" {unit}" if unit else ""
             if evidence.name == "query_plan" and value["before"] == value["after"]:
                 text = f"Query plan remained {value['after']}."
@@ -108,7 +111,11 @@ class TrustedReportDataBuilder:
             )
         else:
             text = f"{cls._label(finding.rule)}: {result}."
-        return ReportFact(text=text, evidence_ids=[], deterministic_finding_ids=[finding.id])
+        return ReportFact(
+            text=text,
+            evidence_ids=finding.evidence_ids,
+            deterministic_finding_ids=[finding.id],
+        )
 
     @staticmethod
     def _is_numeric_comparison(evidence: Evidence) -> bool:
@@ -136,3 +143,46 @@ class TrustedReportDataBuilder:
                 ChartPoint(label="After", value=value["after"]),
             ],
         )
+
+    @classmethod
+    def _finding_chart(cls, finding) -> ReportChart:
+        result = finding.result
+        return ReportChart(
+            id="scan-ratio",
+            title="Scan ratio",
+            type="bar",
+            unit="examined / returned",
+            series=[
+                ChartPoint(label="Before", value=result["before"]),
+                ChartPoint(label="After", value=result["after"]),
+            ],
+        )
+
+    @classmethod
+    def _verification_query(cls, target: str, evidence: Evidence) -> VerificationQuery:
+        query = evidence.source.query or ""
+        if evidence.source.system == "mock" and query.startswith("illustrative"):
+            query = cls._mock_query(target, evidence.name)
+        return VerificationQuery(
+            system=evidence.source.system,
+            query=query,
+            label=cls._label(evidence.name),
+            mode="illustrative" if evidence.source.system == "mock" else "actual",
+            evidence_ids=[evidence.id],
+        )
+
+    @staticmethod
+    def _mock_query(target: str, name: str) -> str:
+        if name == "request_p95_ms":
+            return (
+                "histogram_quantile(0.95, sum by (le) "
+                f'(rate(http_request_duration_seconds_bucket{{service="{target}"}}[5m])))'
+            )
+        if name in {"documents_examined", "documents_returned"}:
+            return (
+                'db.getSiblingDB("admin").system.profile.find({op: "query"})'
+                '.sort({ts: -1}).limit(20)'
+            )
+        if name == "query_plan":
+            return 'db.<database>.<collection>.find(<same filter>).explain("executionStats")'
+        return "Run the corresponding read-only check for this observation."
