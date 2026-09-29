@@ -239,10 +239,7 @@ class AnalysisPipeline:
     def _fallback(self, package, analysis_id: str, errors: list[str]) -> AIInterpretation:
         fallback = AIInterpretation(
             status="critical" if package.deterministic_findings else "insufficient_data",
-            summary=(
-                "AI interpretation unavailable; review the deterministic findings and trusted "
-                "evidence."
-            ),
+            summary=self._fallback_summary(package),
             sections=[
                 AIInterpretationSection(
                     id="deterministic-findings",
@@ -259,16 +256,7 @@ class AnalysisPipeline:
                         contradicting_evidence_ids=[],
                     ),
                     recommended_checks=[
-                        RecommendedCheck(
-                            type="verify",
-                            description=(
-                                "Review the cited evidence and trusted verification queries."
-                            ),
-                            purpose=(
-                                "Identify what additional evidence is needed before taking action."
-                            ),
-                            evidence_ids=[item.id for item in package.evidence],
-                        )
+                        *self._fallback_checks(package),
                     ],
                     limitations=[
                         "AI interpretation was unavailable; definitive root cause is not "
@@ -286,3 +274,73 @@ class AnalysisPipeline:
             analysis_id, errors, fallback.model_dump(mode="json", by_alias=True)
         )
         return fallback
+
+    @staticmethod
+    def _fallback_summary(package) -> str:
+        evidence = {item.name: item.value for item in package.evidence}
+        latency = evidence.get("request_p95_ms")
+        examined = evidence.get("documents_examined")
+        returned = evidence.get("documents_returned")
+        plan = evidence.get("query_plan")
+        if all(isinstance(item, dict) for item in (latency, examined, returned, plan)):
+            return (
+                "AI interpretation unavailable. "
+                f"Request latency increased from {latency['before']} ms to {latency['after']} ms. "
+                f"The query returned {returned['before']} to {returned['after']} documents "
+                f"while documents examined rose from {examined['before']} to "
+                f"{examined['after']}; the observed plan changed from {plan['before']} "
+                f"to {plan['after']}."
+            )
+        if package.deterministic_findings:
+            return (
+                "AI interpretation unavailable. Deterministic findings were observed; "
+                "no causal interpretation is available."
+            )
+        return (
+            "AI interpretation unavailable. No deterministic findings were established "
+            "from the collected evidence."
+        )
+
+    @staticmethod
+    def _fallback_checks(package) -> list[RecommendedCheck]:
+        evidence_ids = [item.id for item in package.evidence]
+        names = {item.name for item in package.evidence}
+        if {"documents_examined", "documents_returned", "query_plan"}.issubset(names):
+            return [
+                RecommendedCheck(
+                    type="inspect",
+                    description=(
+                        "Inspect the affected query's current execution plan and index usage."
+                    ),
+                    purpose="Confirm whether the current plan still uses the expected index.",
+                    evidence_ids=evidence_ids,
+                ),
+                RecommendedCheck(
+                    type="compare",
+                    description=(
+                        "Compare documents examined with documents returned before and after "
+                        "the regression."
+                    ),
+                    purpose="Determine why query work increased while result volume stayed stable.",
+                    evidence_ids=evidence_ids,
+                ),
+                RecommendedCheck(
+                    type="identify",
+                    description=(
+                        "Check whether the relevant indexes or query shape changed during "
+                        "the analyzed period."
+                    ),
+                    purpose="Identify changes worth investigating without asserting causality.",
+                    evidence_ids=evidence_ids,
+                ),
+            ]
+        return [
+            RecommendedCheck(
+                type="verify",
+                description=(
+                    "Review the trusted evidence and run its read-only verification checks."
+                ),
+                purpose="Identify what additional evidence is needed before taking action.",
+                evidence_ids=evidence_ids,
+            )
+        ]
