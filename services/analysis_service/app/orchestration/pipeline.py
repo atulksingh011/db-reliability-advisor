@@ -59,7 +59,7 @@ class AnalysisPipeline:
             package = package.model_copy(
                 update={"deterministic_findings": self.analyzer.analyze(package.evidence)}
             )
-            package_payload = package.model_dump(mode="json", by_alias=True)
+            package_payload = package.to_contract_dict()
             self.repository.save_analysis_package(analysis_id, package_payload)
 
             if not package.deterministic_findings:

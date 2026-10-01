@@ -36,7 +36,7 @@ class SnapshotCheckingProvider(MockAIProvider):
     def analyze(self, package):
         snapshot = self.repository.get_package(package.analysis_id)
         assert snapshot is not None
-        package_payload = package.model_dump(mode="json", by_alias=True)
+        package_payload = package.to_contract_dict()
         assert snapshot["evidence"] == package_payload["evidence"]
         assert snapshot["deterministicFindings"] == package_payload["deterministicFindings"]
         return super().analyze(package)

@@ -81,10 +81,19 @@ def test_migration_reconciles_legacy_schema_without_losing_audit_rows(tmp_path) 
 
 
 def test_audit_and_replay_use_immutable_contract_b_without_adapter() -> None:
+    class CountingAdapter(MockAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.collect_calls = 0
+
+        def collect(self, request, fixture_name=None):
+            self.collect_calls += 1
+            return super().collect(request, fixture_name)
+
     engine = create_database_engine("sqlite://")
     initialize_database(engine)
     repository = AnalysisRepository(engine)
-    adapter = MockAdapter()
+    adapter = CountingAdapter()
     pipeline = AnalysisPipeline(adapter, MockAIProvider(), repository)
 
     original = pipeline.run(request(), "query-regression")
@@ -93,6 +102,7 @@ def test_audit_and_replay_use_immutable_contract_b_without_adapter() -> None:
     replay_audit = repository.get_audit(replay.analysis_id)
 
     assert replay.analysis_id != original.analysis_id
+    assert adapter.collect_calls == 1
     assert replay_audit["run"]["replayedFrom"] == original.analysis_id
     assert replay_audit["evidence"] == original_audit["evidence"]
     assert replay_audit["deterministicFindings"] == original_audit["deterministicFindings"]
