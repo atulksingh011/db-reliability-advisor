@@ -140,7 +140,7 @@ class Feedback(ContractModel):
     analysis_id: str
     finding_id: str | None = None
     verdict: Literal["correct", "partially_correct", "incorrect"]
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=4000)
 
 
 class AnalysisAccepted(ContractModel):

@@ -13,6 +13,7 @@ from .models import (
     DeterministicResult,
     EvidenceSnapshot,
     FallbackOutcome,
+    FeedbackRecord,
     LifecycleEvent,
     ValidationOutcome,
 )
@@ -257,6 +258,11 @@ class AnalysisRepository:
                 .where(LifecycleEvent.analysis_id == analysis_id)
                 .order_by(LifecycleEvent.id)
             ).all()
+            feedback = session.scalars(
+                select(FeedbackRecord)
+                .where(FeedbackRecord.analysis_id == analysis_id)
+                .order_by(FeedbackRecord.id)
+            ).all()
             return {
                 "run": self._run_payload(run),
                 "lifecycle": [
@@ -292,6 +298,17 @@ class AnalysisRepository:
                 ],
                 "fallback": [{"reason": f.reason, "report": f.report_payload} for f in fallbacks],
                 "finalReport": self.get_result(analysis_id),
+                "feedback": [
+                    {
+                        "id": item.id,
+                        "analysisId": item.analysis_id,
+                        "findingId": item.finding_id,
+                        "verdict": item.verdict,
+                        "comment": item.comment,
+                        "createdAt": item.created_at.isoformat(),
+                    }
+                    for item in feedback
+                ],
             }
 
     def get_result(self, analysis_id: str) -> dict[str, Any] | None:

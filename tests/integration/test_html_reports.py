@@ -35,6 +35,65 @@ def test_mock_report_renders_and_feedback_form_creates_contract_d(monkeypatch) -
     assert app.state.feedback_repository.count_records(FeedbackRecord) == 1
 
 
+def test_feedback_api_enforces_finding_ownership_and_payload_validation(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
+    client = TestClient(app)
+    first = client.post("/api/v1/dev/mock/query-regression").json()
+    second = client.post("/api/v1/dev/mock/query-regression").json()
+    app.state.repository.save_analysis_package(
+        second["analysisId"], {"deterministicFindings": [{"id": "D-CROSS"}]}
+    )
+
+    valid = client.post(
+        f"/api/v1/analyses/{first['analysisId']}/feedback",
+        json={
+            "analysisId": first["analysisId"],
+            "findingId": "D1",
+            "verdict": "correct",
+            "comment": '<script>alert("feedback-test")</script>',
+        },
+    )
+    assert valid.status_code == 201
+    assert client.get(f"/analyses/{first['analysisId']}/report").status_code == 200
+
+    unknown_finding = client.post(
+        f"/api/v1/analyses/{first['analysisId']}/feedback",
+        json={"analysisId": first["analysisId"], "findingId": "D99", "verdict": "incorrect"},
+    )
+    assert unknown_finding.status_code == 422
+    cross_analysis = client.post(
+        f"/api/v1/analyses/{first['analysisId']}/feedback",
+        json={
+            "analysisId": first["analysisId"],
+            "findingId": "D-CROSS",
+            "verdict": "incorrect",
+        },
+    )
+    assert cross_analysis.status_code == 422
+    assert client.post(
+        f"/api/v1/analyses/{second['analysisId']}/feedback",
+        json={
+            "analysisId": second["analysisId"],
+            "findingId": "D-CROSS",
+            "verdict": "incorrect",
+        },
+    ).status_code == 201
+    assert client.post(
+        f"/api/v1/analyses/{first['analysisId']}/feedback",
+        json={"analysisId": first["analysisId"], "verdict": "unsupported"},
+    ).status_code == 422
+    assert client.post(
+        f"/api/v1/analyses/{first['analysisId']}/feedback",
+        content="not-json",
+        headers={"content-type": "application/json"},
+    ).status_code == 422
+
+
 def test_report_template_escapes_ai_controlled_text() -> None:
     from services.analysis_service.app.reporting.renderer import TEMPLATES
 

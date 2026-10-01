@@ -24,7 +24,7 @@ def initialize_database(engine: Engine) -> None:
 
     config = Config()
     config.set_main_option("script_location", "migrations")
-    config.set_main_option("sqlalchemy.url", str(engine.url))
+    config.set_main_option("sqlalchemy.url", str(engine.url).replace("%", "%%"))
     inspector = inspect(engine)
     # The foundation used create_all before Alembic became the runtime owner.
     # Adopt that existing schema at 0001, then apply additive migrations.

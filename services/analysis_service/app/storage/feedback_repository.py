@@ -4,7 +4,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from ..contracts.models import Feedback
-from .models import AnalysisRun, FeedbackRecord
+from .models import AnalysisRun, DeterministicResult, FeedbackRecord
 
 
 class FeedbackRepository:
@@ -17,6 +17,19 @@ class FeedbackRepository:
         with Session(self.engine) as session:
             if session.get(AnalysisRun, feedback.analysis_id) is None:
                 raise KeyError(feedback.analysis_id)
+            if feedback.finding_id is not None:
+                findings = session.scalar(
+                    select(DeterministicResult)
+                    .where(DeterministicResult.analysis_id == feedback.analysis_id)
+                    .order_by(DeterministicResult.created_at.desc())
+                )
+                finding_ids = (
+                    {finding.get("id") for finding in findings.findings_payload}
+                    if findings
+                    else set()
+                )
+                if feedback.finding_id not in finding_ids:
+                    raise ValueError("Finding not found for analysis")
             record = FeedbackRecord(
                 analysis_id=feedback.analysis_id,
                 finding_id=feedback.finding_id,
