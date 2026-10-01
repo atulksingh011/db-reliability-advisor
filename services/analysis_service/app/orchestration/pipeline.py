@@ -268,10 +268,7 @@ class AnalysisPipeline:
     def _fallback(self, package, analysis_id: str, errors: list[str]) -> AIInterpretation:
         fallback = AIInterpretation(
             status="critical" if package.deterministic_findings else "insufficient_data",
-            summary=(
-                "AI interpretation unavailable; review the deterministic findings and trusted "
-                "evidence."
-            ),
+            summary=self._fallback_summary(package),
             sections=[
                 AIInterpretationSection(
                     id="deterministic-findings",
@@ -284,21 +281,10 @@ class AnalysisPipeline:
                         ),
                         confidence="low",
                         mode="insufficient_evidence",
-                        supporting_evidence_ids=[],
+                        supporting_evidence_ids=[item.id for item in package.evidence],
                         contradicting_evidence_ids=[],
                     ),
-                    recommended_checks=[
-                        RecommendedCheck(
-                            type="verify",
-                            description=(
-                                "Review the cited evidence and trusted verification queries."
-                            ),
-                            purpose=(
-                                "Identify what additional evidence is needed before taking action."
-                            ),
-                            evidence_ids=[item.id for item in package.evidence],
-                        )
-                    ],
+                    recommended_checks=self._fallback_checks(package),
                     limitations=[
                         "AI interpretation was unavailable; definitive root cause is not "
                         "established."

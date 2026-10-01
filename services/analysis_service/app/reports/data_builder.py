@@ -32,32 +32,47 @@ class TrustedReportDataBuilder:
     def build(self, package: AnalysisPackage) -> TrustedReportData:
         facts = [self._fact(item) for item in package.evidence]
         facts.extend(self._finding_fact(finding) for finding in package.deterministic_findings)
-        charts = [
+        evidence_charts = [
             self._chart(item) for item in package.evidence if self._is_numeric_comparison(item)
         ]
+        finding_charts = [
+            self._finding_chart(finding)
+            for finding in package.deterministic_findings
+            if finding.rule == "scan_ratio_change"
+        ]
+        charts = [*evidence_charts, *finding_charts]
         verification = [
-            VerificationQuery(
-                system=item.source.system,
-                query=item.source.query,
-                label=self._label(item.name),
-                mode="illustrative" if item.source.system == "mock" else "actual",
-                evidence_ids=[item.id],
-            )
+            self._verification_query(package.target, item)
             for item in package.evidence
             if item.source.query
         ]
+        chart_evidence_ids = {
+            chart.id: [item.id]
+            for chart, item in zip(
+                evidence_charts,
+                [item for item in package.evidence if self._is_numeric_comparison(item)],
+                strict=True,
+            )
+        }
+        chart_evidence_ids.update(
+            {
+                chart.id: finding.evidence_ids
+                for chart, finding in zip(
+                    finding_charts,
+                    [
+                        finding
+                        for finding in package.deterministic_findings
+                        if finding.rule == "scan_ratio_change"
+                    ],
+                    strict=True,
+                )
+            }
+        )
         trusted = TrustedReportSection(
             facts=facts,
             charts=charts,
             verification=verification,
-            chart_evidence_ids={
-                chart.id: [item.id]
-                for chart, item in zip(
-                    charts,
-                    [item for item in package.evidence if self._is_numeric_comparison(item)],
-                    strict=True,
-                )
-            },
+            chart_evidence_ids=chart_evidence_ids,
         )
         return TrustedReportData(sections={"default": trusted})
 
@@ -83,6 +98,13 @@ class TrustedReportDataBuilder:
                 text = (
                     f"Connection failures were present ({value.get('count', 'unknown')} observed)."
                 )
+            elif evidence.name == "deployment" and isinstance(value, dict):
+                parts = []
+                for key in ("service", "version", "timestamp"):
+                    if key in value and value[key] is not None:
+                        parts.append(f"{key}={value[key]}")
+                summary = "; ".join(parts) if parts else str(value)
+                text = f"Deployment event: {summary}."
             else:
                 text = f"{cls._label(evidence.name)}: {value}."
         return ReportFact(text=text, evidence_ids=[evidence.id], deterministic_finding_ids=[])

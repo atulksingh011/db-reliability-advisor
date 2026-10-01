@@ -54,18 +54,20 @@
       </div>
       <div class="two-column">
         <section class="panel evidence supporting">
-          <h2>Why this explanation?</h2>
+          <h2>What evidence supports this?</h2>
           <h3>Supporting evidence</h3>
           <ul>{% for fact in section.facts if fact.evidenceIds and fact.evidenceIds[0] in
             section.hypothesis.supportingEvidenceIds %}<li>{{ fact.text }} <small>{{ fact.evidenceIds|join(', ')
                 }}</small></li>{% endfor %}</ul>
         </section>
         <section class="panel evidence contradicting">
-          <h2>Evidence against alternatives</h2>
+          <h2>What contradicts this?</h2>
           <h3>Query/index regression</h3>
-          <ul>{% for fact in section.facts if fact.evidenceIds and fact.evidenceIds[0] in
+          {% if section.hypothesis.contradictingEvidenceIds %}<ul>{% for fact in section.facts if fact.evidenceIds and
+            fact.evidenceIds[0] in
             section.hypothesis.contradictingEvidenceIds %}<li>{{ fact.text }} <small>{{ fact.evidenceIds|join(', ')
-                }}</small></li>{% endfor %}</ul>
+                }}</small></li>{% endfor %}</ul>{% else %}<p class="muted">No contradicting evidence was identified.</p>
+          <p class="muted">Not applicable</p>{% endif %}
         </section>
       </div>
       <section class="panel next-step">
@@ -79,9 +81,8 @@
             <code>{{ item.query }}</code>
             <div class="button-row"><button type="button" class="button copy-query" data-query="{{ item.query }}">Copy
                 query</button><span class="copy-status" aria-live="polite"></span></div><small>Related evidence: {{
-              item.evidenceIds|join(', ') }}</small>{% if item.mode == 'illustrative' %}<p class="muted">This demo did
-              not execute this query; it shows how the observation would be verified against real telemetry.</p>{% endif
-            %}
+              item.evidenceIds|join(', ') }}</small>{% if item.mode == 'illustrative' %}<p class="muted">NOT EXECUTED IN
+              THIS MOCK SCENARIO.</p>{% endif %}
           </article>{% endfor %}</div>{% else %}<p class="muted">No trusted verification query was supplied for this
           report.</p>{% endif %}
       </section>
@@ -91,9 +92,11 @@
       </section>
       <details class="panel details">
         <summary>Detailed evidence</summary>
-        <ul>{% for fact in section.facts %}<li>{{ fact.text }} <small>Evidence: {{ fact.evidenceIds|join(', ') }}{% if
-              fact.deterministicFindingIds %}; findings: {{ fact.deterministicFindingIds|join(', ') }}{% endif
-              %}</small></li>{% endfor %}</ul>
+        <ul>{% for fact in section.facts %}<li>{{ fact.text }}{% if fact.evidenceIds or fact.deterministicFindingIds %}
+            <small>{% if fact.evidenceIds %}Evidence: {{ fact.evidenceIds|join(', ') }}{% endif %}{% if fact.evidenceIds
+              and fact.deterministicFindingIds %}; {% endif %}{% if fact.deterministicFindingIds %}findings: {{
+              fact.deterministicFindingIds|join(', ') }}{% endif %}</small>{% endif %}
+          </li>{% endfor %}</ul>
       </details>
     </section>{% endfor %}
     <section class="panel limitations">
