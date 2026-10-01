@@ -43,7 +43,7 @@ class AnalysisPipeline:
     def run(
         self,
         request: AnalysisRequest,
-        fixture_name: str = "query-regression",
+        fixture_name: str | None = None,
     ) -> ValidatedReport:
         if request.end_time - request.start_time > self.max_window:
             maximum_minutes = self.max_window.total_seconds() / 60
@@ -59,8 +59,15 @@ class AnalysisPipeline:
             package = package.model_copy(
                 update={"deterministic_findings": self.analyzer.analyze(package.evidence)}
             )
-            package_payload = package.model_dump(mode="json", by_alias=True)
+            package_payload = package.to_contract_dict()
             self.repository.save_analysis_package(analysis_id, package_payload)
+
+            if not package.deterministic_findings:
+                report = self._insufficient_data_report(package)
+                self.repository.save_result(
+                    analysis_id, report.model_dump(mode="json", by_alias=True)
+                )
+                return report
 
             validated = self._interpret(package, analysis_id)
             trusted = self.trusted_data_builder.build(package)
@@ -70,6 +77,20 @@ class AnalysisPipeline:
         except Exception as exc:
             self.repository.mark_failed(analysis_id, classify_exception(exc).message)
             raise
+
+    @staticmethod
+    def _insufficient_data_report(package: AnalysisPackage) -> ValidatedReport:
+        """No deterministic finding had enough evidence, so skip AI interpretation entirely."""
+        return ValidatedReport(
+            analysis_id=package.analysis_id,
+            target=package.target,
+            window=package.window,
+            status="insufficient_data",
+            summary="Available evidence was insufficient to support a deterministic finding.",
+            sections=[],
+            limitations=package.missing_evidence
+            or ["No deterministic analysis rule had sufficient evidence."],
+        )
 
     def replay(self, source_analysis_id: str) -> ValidatedReport:
         """Run AI/validation/reporting against one immutable stored Contract B snapshot."""
@@ -95,6 +116,14 @@ class AnalysisPipeline:
             # copy receives the new ID so the resulting Contract C belongs to the replay.
             self.repository.save_analysis_package(analysis_id, payload)
             package = source_package.model_copy(update={"analysis_id": analysis_id})
+
+            if not package.deterministic_findings:
+                report = self._insufficient_data_report(package)
+                self.repository.save_result(
+                    analysis_id, report.model_dump(mode="json", by_alias=True)
+                )
+                return report
+
             validated = self._interpret(package, analysis_id)
             trusted = self.trusted_data_builder.build(package)
             report = self.assembler.assemble(package, trusted, validated)
@@ -252,12 +281,10 @@ class AnalysisPipeline:
                         ),
                         confidence="low",
                         mode="insufficient_evidence",
-                        supporting_evidence_ids=[],
+                        supporting_evidence_ids=[item.id for item in package.evidence],
                         contradicting_evidence_ids=[],
                     ),
-                    recommended_checks=[
-                        *self._fallback_checks(package),
-                    ],
+                    recommended_checks=self._fallback_checks(package),
                     limitations=[
                         "AI interpretation was unavailable; definitive root cause is not "
                         "established."

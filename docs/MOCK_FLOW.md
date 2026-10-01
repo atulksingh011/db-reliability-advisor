@@ -10,6 +10,10 @@ Contract A -> AnalysisPipeline -> MockAdapter -> EvidenceBuilder
 
 The only variable is fixture evidence (or, later, the trigger). Contract A remains the same three-field request. Demo windows are relative to the current time; the mock adapter maps fixture observations to that requested window for display while preserving their illustrative nature.
 
+## Live query regression demo
+
+`make demo-live-query` runs the query-regression flow through Prometheus, Loki, and MongoDB. It inserts 10,000 uniquely tagged temporary orders, runs an indexed read, writes a scenario marker to Loki, then runs an unindexed read. The runner deletes only its tagged orders in a `finally` block. MongoDB slow-operation logging is enabled for all operations in this local Compose stack to make the short demo workload observable; expect more MongoDB diagnostic log volume. The live analysis endpoint is development-only; normal requests and the existing mock demos retain their configured evidence mode.
+
 ## Scenario A — query regression
 
 - Request p95: 200 ms → 1000 ms; examined documents: 1,000 → 200,000; returned: 50 → 50.

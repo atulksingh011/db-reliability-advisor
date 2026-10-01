@@ -32,25 +32,42 @@ class TrustedReportDataBuilder:
     def build(self, package: AnalysisPackage) -> TrustedReportData:
         facts = [self._fact(item) for item in package.evidence]
         facts.extend(self._finding_fact(finding) for finding in package.deterministic_findings)
-        numeric_evidence = [item for item in package.evidence if self._is_numeric_comparison(item)]
-        charts = [self._chart(item) for item in numeric_evidence]
-        charts.extend(
+        evidence_charts = [
+            self._chart(item) for item in package.evidence if self._is_numeric_comparison(item)
+        ]
+        finding_charts = [
             self._finding_chart(finding)
             for finding in package.deterministic_findings
             if finding.rule == "scan_ratio_change"
-        )
+        ]
+        charts = [*evidence_charts, *finding_charts]
         verification = [
             self._verification_query(package.target, item)
             for item in package.evidence
-            if item.source.query and item.name != "deployment"
+            if item.source.query
         ]
         chart_evidence_ids = {
             chart.id: [item.id]
-            for chart, item in zip(charts[: len(numeric_evidence)], numeric_evidence, strict=True)
+            for chart, item in zip(
+                evidence_charts,
+                [item for item in package.evidence if self._is_numeric_comparison(item)],
+                strict=True,
+            )
         }
-        for finding in package.deterministic_findings:
-            if finding.rule == "scan_ratio_change":
-                chart_evidence_ids["scan-ratio"] = finding.evidence_ids
+        chart_evidence_ids.update(
+            {
+                chart.id: finding.evidence_ids
+                for chart, finding in zip(
+                    finding_charts,
+                    [
+                        finding
+                        for finding in package.deterministic_findings
+                        if finding.rule == "scan_ratio_change"
+                    ],
+                    strict=True,
+                )
+            }
+        )
         trusted = TrustedReportSection(
             facts=facts,
             charts=charts,
@@ -67,12 +84,7 @@ class TrustedReportDataBuilder:
     def _fact(cls, evidence: Evidence) -> ReportFact:
         value = evidence.value
         unit = evidence.unit or (value.get("unit") if isinstance(value, dict) else None)
-        if evidence.name == "deployment" and isinstance(value, dict):
-            service = value.get("service", "unknown service")
-            version = value.get("version", "unknown version")
-            observed_at = evidence.timestamp or value.get("timestamp", "unknown time")
-            text = f"Deployment marker observed for {service}, version {version}, at {observed_at}."
-        elif isinstance(value, dict) and "before" in value and "after" in value:
+        if isinstance(value, dict) and "before" in value and "after" in value:
             suffix = f" {unit}" if unit else ""
             if evidence.name == "query_plan" and value["before"] == value["after"]:
                 text = f"Query plan remained {value['after']}."
@@ -86,6 +98,13 @@ class TrustedReportDataBuilder:
                 text = (
                     f"Connection failures were present ({value.get('count', 'unknown')} observed)."
                 )
+            elif evidence.name == "deployment" and isinstance(value, dict):
+                parts = []
+                for key in ("service", "version", "timestamp"):
+                    if key in value and value[key] is not None:
+                        parts.append(f"{key}={value[key]}")
+                summary = "; ".join(parts) if parts else str(value)
+                text = f"Deployment event: {summary}."
             else:
                 text = f"{cls._label(evidence.name)}: {value}."
         return ReportFact(text=text, evidence_ids=[evidence.id], deterministic_finding_ids=[])
@@ -111,11 +130,7 @@ class TrustedReportDataBuilder:
             )
         else:
             text = f"{cls._label(finding.rule)}: {result}."
-        return ReportFact(
-            text=text,
-            evidence_ids=finding.evidence_ids,
-            deterministic_finding_ids=[finding.id],
-        )
+        return ReportFact(text=text, evidence_ids=[], deterministic_finding_ids=[finding.id])
 
     @staticmethod
     def _is_numeric_comparison(evidence: Evidence) -> bool:
@@ -181,7 +196,7 @@ class TrustedReportDataBuilder:
         if name in {"documents_examined", "documents_returned"}:
             return (
                 'db.getSiblingDB("admin").system.profile.find({op: "query"})'
-                '.sort({ts: -1}).limit(20)'
+                ".sort({ts: -1}).limit(20)"
             )
         if name == "query_plan":
             return 'db.<database>.<collection>.find(<same filter>).explain("executionStats")'
