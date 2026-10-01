@@ -143,7 +143,10 @@ def _wait_for_slow_operation(
     expected_plan: str,
     after_time: datetime | None = None,
 ) -> datetime:
-    query = '{service="mongodb",source="diagnostic-log"} | json | msg="Slow query"'
+    query = (
+        '{service="mongodb",source="diagnostic-log"} | json | msg="Slow query" '
+        f"|= {json.dumps(filter_value)}"
+    )
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         response = httpx.get(

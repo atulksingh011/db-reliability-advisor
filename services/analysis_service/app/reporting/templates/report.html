@@ -18,6 +18,14 @@
         <p class="muted">{{ report.window.startTime }} → {{ report.window.endTime }}</p>
       </div><span class="status status-{{ report.status }}">{{ report.status }}</span>
     </header>
+    {% if not report.sections and report.status in ['insufficient_data', 'failed'] %}
+    <section class="panel assessment evidence-status">
+      <p class="eyebrow">Evidence status</p>
+      <h2>{{ report.status }}</h2>
+      <p class="summary">{{ report.summary }}</p>
+      <p class="muted">A supported hypothesis is not available from the collected evidence.</p>
+    </section>
+    {% endif %}
     {% for section in report.sections %}
     <section aria-labelledby="section-{{ section.id }}">
       {% if report.status == 'insufficient_data' or report.status == 'failed' %}<div class="panel assessment">

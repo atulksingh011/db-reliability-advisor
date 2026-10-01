@@ -22,8 +22,9 @@ def test_mock_report_renders_and_feedback_form_creates_contract_d(monkeypatch) -
     report_response = client.get(f"/analyses/{report['analysisId']}/report")
     assert report_response.status_code == 200
     assert "Connection Pressure" in report_response.text
-    assert 'name="analysisId"' in report_response.text
-    assert 'name="verdict" value="partially_correct"' in report_response.text
+    normalized_report_html = " ".join(report_response.text.split())
+    assert 'name="analysisId"' in normalized_report_html
+    assert 'name="verdict" value="partially_correct"' in normalized_report_html
 
     feedback_response = client.post(
         f"/api/v1/analyses/{report['analysisId']}/feedback",
@@ -238,7 +239,8 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
     )
     assert "The query plan is the best-supported explanation." in rendered
     assert "1.5%" in rendered and "2.9%" in rendered
-    assert "Copy query" in rendered
+    normalized_rendered = " ".join(rendered.split())
+    assert "Copy query" in normalized_rendered
     assert "query &lt;safe&gt;" in rendered
 
     insufficient = TEMPLATES.env.get_template("report.html").render(
@@ -257,6 +259,20 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
     assert "Evidence status" in insufficient
     assert "Likely issue" not in insufficient
     assert "Hypothesis confidence" not in insufficient
+
+    empty_insufficient = TEMPLATES.env.get_template("report.html").render(
+        report={
+            "target": "orders-api",
+            "status": "insufficient_data",
+            "window": {"startTime": "start", "endTime": "end"},
+            "summary": "There is not enough evidence.",
+            "analysisId": "AN-EMPTY",
+            "sections": [],
+            "limitations": ["No comparison evidence was found."],
+        }
+    )
+    assert "Evidence status" in empty_insufficient
+    assert "There is not enough evidence." in empty_insufficient
 
 
 def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:
