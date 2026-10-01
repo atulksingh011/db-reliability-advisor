@@ -1,3 +1,4 @@
+from json import JSONDecodeError
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,7 +18,10 @@ async def submit_feedback(analysis_id: str, request: Request) -> dict[str, objec
         payload_data["comment"] = payload_data.get("comment") or None
         is_html_form = True
     else:
-        payload_data = await request.json()
+        try:
+            payload_data = await request.json()
+        except JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="Malformed JSON body") from exc
         is_html_form = False
     try:
         payload = Feedback.model_validate(payload_data)
@@ -29,6 +33,8 @@ async def submit_feedback(analysis_id: str, request: Request) -> dict[str, objec
         feedback_id = request.app.state.feedback_repository.add_feedback(payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Analysis not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if is_html_form:
         return HTMLResponse(
             "<!doctype html><html lang='en'><meta charset='utf-8'>"
