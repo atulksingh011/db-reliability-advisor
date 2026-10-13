@@ -1,0 +1,33 @@
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).parents[2]
+
+
+def test_loki_provisioning_and_live_dashboard_queries_are_explicit() -> None:
+    datasource = (ROOT / "infra/grafana/provisioning/datasources/datasources.yml").read_text()
+    dashboard = json.loads((ROOT / "infra/grafana/dashboards/mvp-overview.json").read_text())
+    assert 'uid: loki' in datasource
+    assert 'url: http://loki:3100' in datasource
+    loki_targets = [
+        panel["targets"][0]["expr"]
+        for panel in dashboard["panels"]
+        if panel["datasource"]["type"] == "loki"
+    ]
+    assert any('service="orders-api",source="application-log"' in query for query in loki_targets)
+    assert any(
+        "Slow query" in query
+        and "reliability_demo.orders" in query
+        and 'attr_appName="orders-api"' in query
+        for query in loki_targets
+    )
+    assert any('source="scenario-marker"' in query for query in loki_targets)
+
+
+def test_gateway_exposes_only_documented_read_oriented_surface_paths() -> None:
+    config = (ROOT / "infra/gateway/nginx.conf").read_text()
+    landing = (ROOT / "infra/gateway/index.html").read_text()
+    for path in ("/grafana/", "/prometheus/", "/alertmanager/", "/advisor/", "/orders/", "/loki/"):
+        assert path in config or path in landing
+    assert "location /orders/dev/ { return 404; }" in config
+    assert "127.0.0.1:38000:8080" in (ROOT / "docker-compose.yml").read_text()

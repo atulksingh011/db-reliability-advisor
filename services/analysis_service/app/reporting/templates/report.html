@@ -5,12 +5,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ report.target }} reliability report</title>
-  <link rel="stylesheet" href="/static/report.css">
+  <link rel="stylesheet" href="{{ request.scope.root_path if request is defined else '' }}/static/report.css">
 </head>
 
 <body>
   <main class="shell">
-    <p><a href="/">← Run another analysis</a></p>
+    <p><a href="{{ request.scope.root_path if request is defined else '' }}/">← Run another analysis</a></p>
     <header class="hero panel">
       <div>
         <p class="eyebrow">Database Reliability Analysis</p>
@@ -113,7 +113,7 @@
     </section>
     <section class="panel">
       <h2>Feedback</h2>
-      <form method="post" action="/api/v1/analyses/{{ report.analysisId }}/feedback" class="feedback-form"><input
+        <form method="post" action="{{ request.scope.root_path if request is defined else '' }}/api/v1/analyses/{{ report.analysisId }}/feedback" class="feedback-form"><input
           type="hidden" name="analysisId" value="{{ report.analysisId }}"><label><input type="radio" name="verdict"
             value="correct" required> Correct</label><label><input type="radio" name="verdict"
             value="partially_correct"> Partially correct</label><label><input type="radio" name="verdict"

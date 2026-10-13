@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 from bson import ObjectId
@@ -14,9 +16,23 @@ from .metrics import ERRORS, REQUEST_DURATION, REQUESTS
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("orders-api")
+log_path = os.getenv("ORDERS_LOG_PATH")
+if log_path:
+    Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(file_handler)
 
 app = FastAPI(title="Orders API", version="0.1.0")
 settings = get_settings()
+
+
+@app.middleware("http")
+async def apply_forwarded_prefix(request: Request, call_next):  # type: ignore[no-untyped-def]
+    prefix = request.headers.get("x-forwarded-prefix", "").rstrip("/")
+    if prefix:
+        request.scope["root_path"] = prefix
+    return await call_next(request)
 
 
 @app.middleware("http")

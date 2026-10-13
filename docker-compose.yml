@@ -62,8 +62,11 @@ services:
     command: ["uvicorn", "services.orders_api.app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
       MONGODB_URI: mongodb://app_user:app_password@mongo:27017/reliability_demo?authSource=reliability_demo
+      ORDERS_LOG_PATH: /var/log/orders-api/orders-api.log
     ports:
       - "8001:8001"
+    volumes:
+      - orders-logs:/var/log/orders-api
     depends_on:
       mongo:
         condition: service_healthy
@@ -78,6 +81,8 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+      - --web.external-url=${PUBLIC_BASE_URL:-http://localhost:38000}/prometheus/
+      - --web.route-prefix=/
     ports:
       - "9090:9090"
     volumes:
@@ -99,7 +104,11 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.34.1
-    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=${PUBLIC_BASE_URL:-http://localhost:38000}/alertmanager/
+      - --web.route-prefix=/
     ports:
       - "9093:9093"
     volumes:
@@ -132,6 +141,7 @@ services:
     volumes:
       - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - mongo-logs:/var/log/mongodb:ro
+      - orders-logs:/var/log/orders-api:ro
     depends_on:
       loki:
         condition: service_healthy
@@ -141,10 +151,12 @@ services:
   grafana:
     image: grafana/grafana:13.2.2
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${PUBLIC_BASE_URL:-http://localhost:38000}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     ports:
       - "3001:3000"
     volumes:
@@ -162,6 +174,25 @@ services:
       timeout: 5s
       retries: 15
 
+  demo-gateway:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:38000:8080"
+    volumes:
+      - ./infra/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/gateway/index.html:/usr/share/nginx/html/index.html:ro
+    depends_on:
+      grafana:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      alertmanager:
+        condition: service_healthy
+      analysis-service:
+        condition: service_healthy
+      orders-api:
+        condition: service_healthy
+
 volumes:
   mongo-data:
   mongo-logs:
@@ -169,3 +200,4 @@ volumes:
   prometheus-data:
   grafana-data:
   analysis-data:
+  orders-logs:

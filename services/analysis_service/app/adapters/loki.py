@@ -223,7 +223,8 @@ class LokiAdapter:
         # bounded result set before the target workload is returned.
         slow_op_query = (
             '{service="mongodb",source="diagnostic-log"} '
-            '|= "reliability_demo.orders" | json | msg="Slow query"'
+            f'|= "reliability_demo.orders" | json | msg="Slow query" '
+            f'| attr_appName="{escaped_target}"'
         )
         context_query = (
             f'{{service="{escaped_target}"}} | json | '

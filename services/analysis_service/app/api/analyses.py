@@ -38,6 +38,10 @@ def _pipeline(request: Request) -> AnalysisPipeline:
     return request.app.state.pipeline
 
 
+def _root_path(request: Request) -> str:
+    return request.scope.get("root_path", "").rstrip("/")
+
+
 @pages_router.get("/", response_class=HTMLResponse)
 def report_index(request: Request) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(
@@ -73,7 +77,9 @@ async def run_manual_analysis(request: Request) -> Response:
             },
             status_code=422,
         )
-    return RedirectResponse(f"/analyses/{report.analysis_id}/report", status_code=303)
+    return RedirectResponse(
+        f"{_root_path(request)}/analyses/{report.analysis_id}/report", status_code=303
+    )
 
 
 @pages_router.get("/analyses/{analysis_id}/report", response_class=HTMLResponse)
