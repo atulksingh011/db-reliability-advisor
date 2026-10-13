@@ -1,3 +1,5 @@
+import importlib
+
 from fastapi.testclient import TestClient
 
 from services.orders_api.app import main
@@ -29,11 +31,18 @@ class _Collection:
         return _Cursor([])
 
 
-def test_development_query_regression_steps_use_orders_api_mongo_boundary(monkeypatch) -> None:
-    collection = _Collection()
-    monkeypatch.setattr(main, "orders_collection", lambda _uri: collection)
+def _reload_orders_api(monkeypatch, app_env: str):
+    monkeypatch.setenv("APP_ENV", app_env)
+    main.get_settings.cache_clear()
+    return importlib.reload(main)
 
-    with TestClient(main.app) as client:
+
+def test_development_query_regression_steps_use_orders_api_mongo_boundary(monkeypatch) -> None:
+    orders_main = _reload_orders_api(monkeypatch, "development")
+    collection = _Collection()
+    monkeypatch.setattr(orders_main, "orders_collection", lambda _uri: collection)
+
+    with TestClient(orders_main.app) as client:
         indexed = client.get(
             "/dev/scenario/query-regression",
             params={"mode": "indexed", "customerId": "customer-1", "scenarioId": "scenario-1"},
@@ -51,3 +60,25 @@ def test_development_query_regression_steps_use_orders_api_mongo_boundary(monkey
         {"customerId": "customer-1"},
         {"demoScenarioId": "scenario-1-missing"},
     ]
+
+
+def test_test_environment_does_not_expose_development_scenario_route(monkeypatch) -> None:
+    orders_main = _reload_orders_api(monkeypatch, "test")
+
+    response = TestClient(orders_main.app).get(
+        "/dev/scenario/query-regression",
+        params={"mode": "indexed", "customerId": "customer-1", "scenarioId": "scenario-1"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_production_does_not_expose_development_scenario_route(monkeypatch) -> None:
+    orders_main = _reload_orders_api(monkeypatch, "production")
+
+    response = TestClient(orders_main.app).get(
+        "/dev/scenario/query-regression",
+        params={"mode": "indexed", "customerId": "customer-1", "scenarioId": "scenario-1"},
+    )
+
+    assert response.status_code == 404
