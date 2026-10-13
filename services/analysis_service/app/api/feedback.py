@@ -36,10 +36,11 @@ async def submit_feedback(analysis_id: str, request: Request) -> dict[str, objec
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if is_html_form:
+        root_path = request.scope.get("root_path", "").rstrip("/")
         return HTMLResponse(
             "<!doctype html><html lang='en'><meta charset='utf-8'>"
             "<title>Feedback recorded</title><p>Feedback recorded. "
-            f"<a href='/analyses/{analysis_id}/report'>Return to report</a></p></html>",
+            f"<a href='{root_path}/analyses/{analysis_id}/report'>Return to report</a></p></html>",
             status_code=201,
         )
     return {"id": feedback_id, "status": "recorded"}

@@ -33,7 +33,44 @@ make smoke
 make test
 ```
 
-Open the Analysis UI at `http://localhost:8000/` to submit a manual analysis with only a target and time window. Each demo also prints its report URL. Open Grafana at `http://localhost:3001` (`admin` / `admin` locally). The **MongoDB Diagnostic Logs** panel is configured for the runtime-verified Loki query `{service="mongodb"}` over the last six hours. Alloy reads `/var/log/mongodb/mongod.log`; Loki exposes `service="mongodb"` and `source="diagnostic-log"` labels.
+The single-port demo entry point is `http://localhost:38000/`. Existing direct development ports remain available: Analysis `:8000`, Orders `:8001`, Prometheus `:9090`, Alertmanager `:9093`, Grafana `:3001`, Loki `:3100`. Set `PUBLIC_BASE_URL` when using a tunnel or port-forward; the gateway itself is the only port that needs to be exposed externally.
+
+## Single-port demo access
+
+| Path | Purpose |
+| --- | --- |
+| `/` | Demo landing page. |
+| `/grafana/` | Grafana dashboards and Explore. |
+| `/prometheus/` | Prometheus graph and targets. |
+| `/alertmanager/` | Alertmanager UI. |
+| `/advisor/` | Analysis UI, reports, audit, replay, and feedback. |
+| `/advisor/docs` | Analysis API documentation. |
+| `/orders/docs` | Orders API documentation. Development workload routes are intentionally blocked at the gateway. |
+| `/loki/ready` and `/loki/api/v1/*` | Read-oriented Loki API; Loki has no standalone graphical UI. |
+
+Grafana runs anonymously as a read-only demo surface; the login form and basic admin authentication are disabled. Do not expose this development stack to an untrusted network without adding access control at the tunnel or gateway.
+
+## Grafana / Loki
+
+Open `/grafana/` and select **DB Reliability Advisor — Live Evidence**. To inspect arbitrary logs, open **Explore**, select the provisioned **Loki** datasource, choose a time range containing the workload, and run LogQL. Useful verified selectors are:
+
+```logql
+{service="orders-api",source="application-log"}
+{service="mongodb",source="diagnostic-log"}
+{service="mongodb",source="diagnostic-log"} |= "reliability_demo.orders" | json | msg="Slow query" | attr_appName="orders-api"
+{service="orders-api",source="scenario-marker"} | json
+{service="orders-api",source="scenario-marker"} | json | scenarioId="<scenario-id>"
+```
+
+Alloy ships MongoDB diagnostic logs and Orders API application logs to Loki. Live Query Regression also writes a scenario marker stream with a `scenarioId`. The dashboard uses Loki for all log panels and Prometheus for metric panels; the UI time range must include the actual observation window.
+
+## Prometheus
+
+Open `/prometheus/` for the graph, targets, and direct PromQL verification. The dashboard includes Orders API request rate, p95, error rate, Mongo connection utilization, and exporter health.
+
+## DB Reliability Advisor
+
+Open `/advisor/` for manual analysis and recent reports. Reports are available at `/advisor/analyses/{analysisId}/report`; the API exposes `/advisor/api/v1/analyses`, `/audit`, `/replay`, and `/feedback`. The live Query Regression runner is invoked with `make demo-live-query` and still uses the internal/direct Orders API path; the gateway intentionally does not publish `/orders/dev/*`.
 
 Manual API trigger:
 
@@ -59,7 +96,16 @@ The default `AI_PROVIDER=mock` is deterministic and suitable for local tests. To
 
 Reports distinguish status from hypothesis confidence, show supporting versus contradicting evidence, recommend a next investigation with its purpose, and keep limitations prominent. Feedback is submitted from the report form to Contract D and stored separately from analysis evidence.
 
-Other endpoints: Analysis Service/OpenAPI `http://localhost:8000/docs`, Orders API `http://localhost:8001/docs`, Prometheus `http://localhost:9090`, Alertmanager `http://localhost:9093`, Loki readiness `http://localhost:3100/ready`.
+## Evidence flow and MVP boundary
+
+```text
+Orders workload → MongoDB → Prometheus/Loki/Mongo metadata
+→ adapters → EvidenceBuilder → DeterministicAnalyzer → Contract B
+→ Gemini interpretation → GroundingValidator → TrustedReportData
+→ Contract C → report/audit/replay/feedback
+```
+
+The MVP proves, when the live path is run, real observability ingestion, bounded evidence/provenance, deterministic facts, grounded interpretation, validation/fallback, and persisted audit/replay/feedback. It does not provide automatic remediation, a definitive root cause when evidence is insufficient, production-scale guarantees, or a live connection-pressure scenario: that scenario remains fixture/mock-based in this repository. Healthy/noise abstention is covered by tests and insufficient-evidence handling, not by a separate live demo workload.
 
 The demos call development-only selectors that build ordinary Contract A requests and enter the same pipeline. Scenario selection is never part of Contract A. Run `make setup` for Python-only development, `make lint` for Ruff, and `docker compose config --quiet` to validate Compose. `make reset` removes named volumes, including local SQLite and Mongo data.
 

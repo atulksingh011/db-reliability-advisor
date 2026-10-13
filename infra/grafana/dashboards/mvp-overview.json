@@ -1,44 +1,24 @@
 {
   "annotations": {"list": []},
-  "editable": true,
+  "editable": false,
   "panels": [
-    {
-      "type": "stat",
-      "title": "Scrape targets up",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum(up)", "refId": "A"}],
-      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
-    },
-    {
-      "type": "timeseries",
-      "title": "Orders API request rate",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum(rate(orders_api_requests_total[5m]))", "refId": "A"}],
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
-    },
-    {
-      "type": "logs",
-      "title": "MongoDB Diagnostic Logs",
-      "description": "MongoDB mongod.log entries collected by Alloy. Query: {service=\"mongodb\"}",
-      "datasource": {"type": "loki", "uid": "loki"},
-      "targets": [{"expr": "{service=\"mongodb\"}", "refId": "A"}],
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
-    },
-    {
-      "type": "stat",
-      "title": "MongoDB exporter",
-      "description": "Shows whether Prometheus can scrape the pinned Percona exporter.",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "up{job=\"mongodb-exporter\"}", "refId": "A"}],
-      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 8}
-    }
+    {"type":"stat","title":"Scrape targets up","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(up)","refId":"A"}],"gridPos":{"h":6,"w":6,"x":0,"y":0}},
+    {"type":"timeseries","title":"Orders API request rate","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(rate(orders_api_requests_total[5m]))","refId":"A"}],"gridPos":{"h":6,"w":9,"x":6,"y":0}},
+    {"type":"timeseries","title":"Orders API p95","description":"Prometheus-derived request p95; this is telemetry context, not a root-cause claim.","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"1000 * histogram_quantile(0.95, sum by (le) (rate(orders_api_request_duration_seconds_bucket[5m])))","refId":"A"}],"gridPos":{"h":6,"w":9,"x":15,"y":0}},
+    {"type":"timeseries","title":"Orders API error rate","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"100 * sum(rate(orders_api_errors_total[5m])) / clamp_min(sum(rate(orders_api_requests_total[5m])), 1e-12)","refId":"A"}],"gridPos":{"h":6,"w":9,"x":0,"y":6}},
+    {"type":"timeseries","title":"Mongo connection utilization","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"100 * sum(mongodb_ss_connections{conn_type=\"current\"}) / clamp_min(sum(mongodb_ss_connections{conn_type=\"current\"}) + sum(mongodb_ss_connections{conn_type=\"available\"}), 1e-12)","refId":"A"}],"gridPos":{"h":6,"w":9,"x":9,"y":6}},
+    {"type":"stat","title":"MongoDB exporter","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"up{job=\"mongodb-exporter\"}","refId":"A"}],"gridPos":{"h":6,"w":6,"x":18,"y":6}},
+    {"type":"logs","title":"Orders API logs","description":"Actual Alloy labels: service=orders-api, source=application-log.","datasource":{"type":"loki","uid":"loki"},"targets":[{"expr":"{service=\"orders-api\",source=\"application-log\"}","refId":"A"}],"gridPos":{"h":9,"w":12,"x":0,"y":12}},
+    {"type":"logs","title":"MongoDB slow-query logs","description":"Filters diagnostic logs to the reliability_demo.orders workload, Slow query records, and nested attr.appName=orders-api so exporter traffic is excluded.","datasource":{"type":"loki","uid":"loki"},"targets":[{"expr":"{service=\"mongodb\",source=\"diagnostic-log\"} |= \"reliability_demo.orders\" | json | msg=\"Slow query\" | attr_appName=\"orders-api\"","refId":"A"}],"gridPos":{"h":9,"w":12,"x":12,"y":12}},
+    {"type":"logs","title":"Scenario marker events","description":"Live runner markers use service=orders-api, source=scenario-marker and include scenarioId in the JSON line.","datasource":{"type":"loki","uid":"loki"},"targets":[{"expr":"{service=\"orders-api\",source=\"scenario-marker\"} | json","refId":"A"}],"gridPos":{"h":9,"w":12,"x":0,"y":21}},
+    {"type":"logs","title":"All MongoDB diagnostic logs","datasource":{"type":"loki","uid":"loki"},"targets":[{"expr":"{service=\"mongodb\",source=\"diagnostic-log\"}","refId":"A"}],"gridPos":{"h":9,"w":12,"x":12,"y":21}}
   ],
   "schemaVersion": 40,
-  "tags": ["mock", "foundation"],
+  "tags": ["dbadv","live-evidence","prometheus","loki"],
   "templating": {"list": []},
-  "time": {"from": "now-6h", "to": "now"},
-  "timezone": "browser",
-  "title": "MVP Overview",
-  "uid": "dbadv-mvp-overview",
-  "version": 1
+  "time": {"from":"now-6h","to":"now"},
+  "timezone":"browser",
+  "title":"DB Reliability Advisor — Live Evidence",
+  "uid":"dbadv-mvp-overview",
+  "version":2
 }

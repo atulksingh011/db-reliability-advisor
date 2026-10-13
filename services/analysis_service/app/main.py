@@ -51,6 +51,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app = FastAPI(title="Database Reliability Advisor", version="0.1.0")
+
+    @app.middleware("http")
+    async def apply_forwarded_prefix(request, call_next):  # type: ignore[no-untyped-def]
+        prefix = request.headers.get("x-forwarded-prefix", "").rstrip("/")
+        if prefix:
+            request.scope["root_path"] = prefix
+        return await call_next(request)
+
     app.state.repository = repository
     app.state.feedback_repository = feedback_repository
     app.state.pipeline = pipeline

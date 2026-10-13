@@ -239,6 +239,7 @@ def _wait_for_slow_operation(
 ) -> datetime:
     query = (
         '{service="mongodb",source="diagnostic-log"} | json | msg="Slow query" '
+        '| attr_appName="orders-api" '
         f"|= {json.dumps(filter_value)}"
     )
     deadline = time.monotonic() + 15
