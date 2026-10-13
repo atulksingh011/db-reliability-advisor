@@ -35,6 +35,21 @@ make test
 
 The single-port demo entry point is `http://localhost:38000/`. Existing direct development ports remain available: Analysis `:8000`, Orders `:8001`, Prometheus `:9090`, Alertmanager `:9093`, Grafana `:3001`, Loki `:3100`. Set `PUBLIC_BASE_URL` when using a tunnel or port-forward; the gateway itself is the only port that needs to be exposed externally.
 
+## Expose the demo with ngrok
+
+The controlled public-demo helper exposes only the unified gateway, never the individual service ports:
+
+```bash
+ngrok config add-authtoken <YOUR_TOKEN>
+./scripts/expose-demo.sh
+```
+
+The script requires Docker, `curl`, Python 3, and an authenticated ngrok installation. It discovers the generated HTTPS URL, temporarily applies it as `PUBLIC_BASE_URL` to Grafana, Prometheus, and Alertmanager, validates local and public routes, and prints links for the landing page, Advisor, Grafana, Prometheus, Alertmanager, Orders docs, and Loki readiness. It does not edit `.env`, expose ports `8000`, `8001`, `3001`, `9090`, `9093`, or `3100`, or delete data volumes.
+
+Grafana remains anonymous Viewer access: dashboards and curated Loki panels are available, while Explore is intentionally unavailable to anonymous viewers. The gateway continues to block `/orders/dev/*`. This is a temporary demo tunnel, not production access control; do not expose the stack to untrusted public traffic without adding authentication and an appropriate security boundary.
+
+Press Ctrl-C to stop the tunnel. The script stops only the ngrok process it started, restores the local Docker URL configuration, and leaves Docker services running. Use `./scripts/expose-demo.sh --stop-stack-on-exit` only when stopping the local Compose services is explicitly desired.
+
 ## Single-port demo access
 
 | Path | Purpose |

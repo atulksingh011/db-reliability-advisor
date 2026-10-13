@@ -1,7 +1,23 @@
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
+
+
+def test_public_demo_script_is_safe_and_targets_only_gateway() -> None:
+    script = ROOT / "scripts" / "expose-demo.sh"
+    text = script.read_text()
+
+    assert script.is_file()
+    assert os.access(script, os.X_OK)
+    assert "GATEWAY_PORT=38000" in text
+    assert 'ngrok_args=(http "$GATEWAY_PORT"' in text
+    assert 'PUBLIC_BASE_URL="$PUBLIC_URL"' in text
+    assert "grafana prometheus alertmanager" in text
+    assert "/orders/dev/blocked" in text
+    for port in ("8000", "8001", "3001", "9090", "9093", "3100"):
+        assert f'ngrok_args=(http "{port}"' not in text
 
 
 def test_loki_provisioning_and_live_dashboard_queries_are_explicit() -> None:
@@ -31,6 +47,7 @@ def test_gateway_exposes_only_documented_read_oriented_surface_paths() -> None:
         assert path in config or path in landing
     assert "location /orders/dev/ { return 404; }" in config
     assert "127.0.0.1:38000:8080" in (ROOT / "docker-compose.yml").read_text()
+    assert "location /advisor/static/" in config
 
 
 def test_gateway_resolves_backend_dns_at_request_time() -> None:
