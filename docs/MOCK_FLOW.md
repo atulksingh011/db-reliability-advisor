@@ -12,7 +12,7 @@ The only variable is fixture evidence (or, later, the trigger). Contract A remai
 
 ## Live query regression demo
 
-`make demo-live-query` runs the query-regression flow through Prometheus, Loki, and MongoDB. It inserts 10,000 uniquely tagged temporary orders, runs an indexed read, writes a scenario marker to Loki, then runs an unindexed read. The runner deletes only its tagged orders in a `finally` block. MongoDB slow-operation logging is enabled for all operations in this local Compose stack to make the short demo workload observable; expect more MongoDB diagnostic log volume. The live analysis endpoint is development-only; normal requests and the existing mock demos retain their configured evidence mode.
+`make demo-live-query` runs the query-regression flow through the Orders API, Prometheus, Loki, and MongoDB. It inserts 10,000 uniquely tagged temporary orders for setup, drives 35-second indexed and 35-second unindexed phases through the development-only Orders API scenario route, writes a scenario marker to Loki, and waits for Prometheus to scrape the comparison phase. The runner deletes only its tagged orders in a `finally` block. MongoDB slow-operation logging is enabled for all operations in this local Compose stack to make the workload observable; expect additional MongoDB diagnostic log volume. The live analysis endpoint is development-only; normal requests and the existing mock demos retain their configured evidence mode.
 
 ## Scenario A — query regression
 

@@ -158,6 +158,7 @@ def test_loki_uses_valid_queries_and_preserves_sanitized_provenance(monkeypatch)
     assert all(item.source.system == "loki" for item in collected.evidence)
     assert [item.source.query for item in collected.evidence] == [queries[1]]
     assert 'msg="Slow query"' in queries[0]
+    assert '|= "reliability_demo.orders"' in queries[0]
     assert "event=~" in queries[1]
     assert "connection" in queries[2]
     assert all(", namespace" not in query for query in queries)

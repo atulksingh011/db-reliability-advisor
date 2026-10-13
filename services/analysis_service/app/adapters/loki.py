@@ -218,7 +218,13 @@ class LokiAdapter:
         end_timestamp = request.end_time.timestamp()
 
         escaped_target = request.target.replace("\\", "\\\\").replace('"', '\\"')
-        slow_op_query = '{service="mongodb",source="diagnostic-log"} | json | msg="Slow query"'
+        # Restrict the slow-operation stream to the application namespace. MongoDB
+        # diagnostics also contain exporter/admin traffic, which can consume Loki's
+        # bounded result set before the target workload is returned.
+        slow_op_query = (
+            '{service="mongodb",source="diagnostic-log"} '
+            '|= "reliability_demo.orders" | json | msg="Slow query"'
+        )
         context_query = (
             f'{{service="{escaped_target}"}} | json | '
             'event=~"deployment|restart|scenario_marker|alert_trigger"'
