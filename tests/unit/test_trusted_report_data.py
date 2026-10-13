@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
 from services.analysis_service.app.ai.mock_provider import MockAIProvider
 from services.analysis_service.app.contracts.models import EvidenceSource
 from services.analysis_service.app.reports.assembler import ReportAssembler
@@ -79,3 +84,26 @@ def test_finding_facts_preserve_contract_b_evidence_references() -> None:
     )
 
     assert finding_fact.evidence_ids == ["E2"]
+
+
+def test_contract_c_schema_allows_unitless_count_charts() -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    interpretation = MockAIProvider().analyze(package)
+    report = ReportAssembler().assemble(
+        package,
+        TrustedReportDataBuilder().build(package),
+        interpretation,
+    )
+    serialized = report.model_dump(mode="json", by_alias=True)
+    schema = json.loads(
+        (
+            Path(__file__).parents[2] / "contracts/contract-c-validated-report.schema.json"
+        ).read_text()
+    )
+
+    Draft202012Validator(schema).validate(serialized)
+
+    charts = {chart["id"]: chart for chart in serialized["sections"][0]["charts"]}
+    assert charts["documents-examined"]["unit"] is None
+    assert charts["documents-returned"]["unit"] is None
+    assert charts["request-p95-ms"]["unit"] == "ms"

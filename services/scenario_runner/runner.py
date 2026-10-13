@@ -11,6 +11,11 @@ from pymongo import MongoClient
 
 app = typer.Typer(help="Run mock/illustrative scenarios through the Analysis Service.")
 
+BASELINE_SECONDS = 35
+COMPARISON_SECONDS = 35
+PROMETHEUS_WAIT_SECONDS = 45
+REQUEST_INTERVAL_SECONDS = 0.5
+
 
 @app.command()
 def run(
@@ -30,20 +35,38 @@ def run(
     loki_url: Annotated[str, typer.Option(help="Loki base URL")] = os.getenv(
         "LOKI_URL", "http://localhost:3100"
     ),
+    orders_api_url: Annotated[str, typer.Option(help="Orders API base URL")] = os.getenv(
+        "ORDERS_API_URL", "http://localhost:8001"
+    ),
+    prometheus_url: Annotated[str, typer.Option(help="Prometheus base URL")] = os.getenv(
+        "PROMETHEUS_URL", "http://localhost:9090"
+    ),
 ) -> None:
     if scenario not in {"query-regression", "connection-pressure"}:
         raise typer.BadParameter("scenario must be query-regression or connection-pressure")
     if live:
         if scenario != "query-regression":
             raise typer.BadParameter("--live is currently supported only for query-regression")
-        response = _run_live_query_regression(base_url, mongo_uri, loki_url)
+        response = _run_live_query_regression(
+            base_url,
+            mongo_uri,
+            loki_url,
+            orders_api_url,
+            prometheus_url,
+        )
     else:
         response = httpx.post(f"{base_url}/api/v1/dev/mock/{scenario}", timeout=30)
     response.raise_for_status()
     typer.echo(json.dumps(response.json(), indent=2))
 
 
-def _run_live_query_regression(base_url: str, mongo_uri: str, loki_url: str) -> httpx.Response:
+def _run_live_query_regression(
+    base_url: str,
+    mongo_uri: str,
+    loki_url: str,
+    orders_api_url: str,
+    prometheus_url: str,
+) -> httpx.Response:
     scenario_id = uuid4().hex
     customer_id = f"DBADV-LIVE-{scenario_id}"
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
@@ -54,12 +77,7 @@ def _run_live_query_regression(base_url: str, mongo_uri: str, loki_url: str) -> 
         return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
     current_time = server_time()
-    start_time = current_time - timedelta(seconds=2)
     last_marker = _latest_scenario_marker_time(loki_url, current_time)
-    if last_marker is not None:
-        start_time = max(start_time, last_marker + timedelta(seconds=1))
-    while server_time() < start_time:
-        time.sleep(0.05)
     try:
         collection.insert_many(
             [
@@ -74,18 +92,25 @@ def _run_live_query_regression(base_url: str, mongo_uri: str, loki_url: str) -> 
             ],
             ordered=False,
         )
-        for _attempt in range(5):
-            list(collection.find({"customerId": customer_id}).batch_size(1000))
-
+        start_time = server_time()
+        if last_marker is not None:
+            start_time = max(start_time, last_marker + timedelta(seconds=1))
+        baseline_end = _run_orders_api_phase(
+            orders_api_url,
+            "indexed",
+            customer_id,
+            scenario_id,
+            BASELINE_SECONDS,
+        )
         before_log_time = _wait_for_slow_operation(
             loki_url,
             start_time,
-            server_time() + timedelta(seconds=5),
+            baseline_end + timedelta(seconds=5),
             "customerId",
             customer_id,
             "IXSCAN",
         )
-        marker_time = before_log_time + timedelta(milliseconds=10)
+        marker_time = max(before_log_time, server_time()) + timedelta(milliseconds=10)
         marker = {
             "event": "scenario_marker",
             "service": "orders-api",
@@ -108,18 +133,28 @@ def _run_live_query_regression(base_url: str, mongo_uri: str, loki_url: str) -> 
             timeout=10,
         ).raise_for_status()
 
-        for _attempt in range(3):
-            list(collection.find({"demoScenarioId": f"{scenario_id}-missing"}).limit(1))
+        comparison_end = _run_orders_api_phase(
+            orders_api_url,
+            "regression",
+            customer_id,
+            scenario_id,
+            COMPARISON_SECONDS,
+        )
         after_log_time = _wait_for_slow_operation(
             loki_url,
             start_time,
-            server_time() + timedelta(seconds=5),
+            comparison_end + timedelta(seconds=5),
             "demoScenarioId",
             f"{scenario_id}-missing",
             "COLLSCAN",
             after_time=marker_time,
         )
-        end_time = after_log_time + timedelta(seconds=5)
+        end_time = _wait_for_prometheus_observation(
+            prometheus_url,
+            comparison_end,
+            start_time,
+            after_log_time,
+        )
         return httpx.post(
             f"{base_url.rstrip('/')}/api/v1/dev/live/analyses",
             json={
@@ -132,6 +167,65 @@ def _run_live_query_regression(base_url: str, mongo_uri: str, loki_url: str) -> 
     finally:
         collection.delete_many({"demoScenarioId": scenario_id})
         client.close()
+
+
+def _run_orders_api_phase(
+    orders_api_url: str,
+    mode: str,
+    customer_id: str,
+    scenario_id: str,
+    duration_seconds: int,
+) -> datetime:
+    deadline = time.monotonic() + duration_seconds
+    while time.monotonic() < deadline:
+        response = httpx.get(
+            f"{orders_api_url.rstrip('/')}/dev/scenario/query-regression",
+            params={
+                "mode": mode,
+                "customerId": customer_id,
+                "scenarioId": scenario_id,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        time.sleep(REQUEST_INTERVAL_SECONDS)
+    return datetime.now(UTC)
+
+
+def _wait_for_prometheus_observation(
+    prometheus_url: str,
+    comparison_end: datetime,
+    start_time: datetime,
+    fallback_end: datetime,
+) -> datetime:
+    query = 'orders_api_requests_total{job="orders-api",path="/dev/scenario/query-regression"}'
+    deadline = time.monotonic() + PROMETHEUS_WAIT_SECONDS
+    latest_timestamp = None
+    while time.monotonic() < deadline:
+        response = httpx.get(
+            f"{prometheus_url.rstrip('/')}/api/v1/query",
+            params={"query": query},
+            timeout=5,
+        )
+        response.raise_for_status()
+        result = response.json().get("data", {}).get("result", [])
+        timestamps = [
+            float(item["value"][0])
+            for item in result
+            if isinstance(item.get("value"), list) and len(item["value"]) == 2
+        ]
+        if timestamps:
+            latest_timestamp = max(timestamps)
+            if latest_timestamp >= comparison_end.timestamp():
+                return max(
+                    datetime.fromtimestamp(latest_timestamp, UTC),
+                    fallback_end,
+                    start_time + timedelta(seconds=1),
+                )
+        time.sleep(1)
+    raise RuntimeError(
+        "Timed out waiting for Prometheus to scrape the Orders API comparison phase"
+    )
 
 
 def _wait_for_slow_operation(

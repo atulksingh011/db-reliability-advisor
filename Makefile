@@ -1,7 +1,7 @@
 PYTHON ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-.PHONY: help setup up down restart logs ps seed test test-contracts test-integration lint format smoke demo-query demo-connection reset
+.PHONY: help setup up down restart logs ps seed test test-contracts test-integration lint format smoke demo-query demo-live-query demo-connection reset
 
 help:
 	@echo "setup             Install Python dependencies"
@@ -65,6 +65,9 @@ demo-query:
 	  echo "$$response" | python3 -m json.tool; \
 	  id=$$(echo "$$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["analysisId"])'); \
 	  echo "Report: http://localhost:8000/analyses/$$id/report"
+
+demo-live-query:
+	$(PYTHON) -m services.scenario_runner.runner query-regression --live
 
 demo-connection:
 	@response=$$(curl --fail --silent --show-error -X POST http://localhost:8000/api/v1/dev/mock/connection-pressure); \

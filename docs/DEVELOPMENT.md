@@ -29,7 +29,7 @@ Audit error details are sanitized before persistence. Durable history records sa
 
 ## Ticket entry points
 
-- **DBADV-01:** `docker-compose.yml`, `infra/`, `services/orders_api/`, `services/scenario_runner/`, and `scripts/`. Mock fixtures and the development alert bridge are available; real workloads, triggers and telemetry generation remain future work.
+- **DBADV-01:** `docker-compose.yml`, `infra/`, `services/orders_api/`, `services/scenario_runner/`, and `scripts/`. Mock fixtures, the development alert bridge, and the development-only live query-regression workload are available; production trigger mapping remains future work.
 - **DBADV-02:** `services/analysis_service/app/adapters/`, `evidence/`, and `analyzers/`. `MockAdapter`, canonical Contract B examples, and fixtures provide seams; Prometheus, Loki and Mongo collectors remain TODOs.
 - **DBADV-03:** `services/analysis_service/app/ai/` and `services/analysis_service/app/orchestration/pipeline.py`. Mock and Gemini provider boundaries plus Contract B fixtures are available; advanced grounding and policy remain TODOs.
 - **DBADV-04:** `services/analysis_service/app/reporting/` and HTML routes in `app/api/analyses.py`. Contract C examples and mock pipeline output are available; extend accessible templates without changing report semantics.

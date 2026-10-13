@@ -78,6 +78,35 @@ def search_orders(
     return {"orders": documents, "count": len(documents)}
 
 
+if settings.app_env == "development":
+
+    @app.get("/dev/scenario/query-regression")
+    def run_query_regression_step(
+        mode: str = Query(pattern="^(indexed|regression)$"),
+        customer_id: str = Query(alias="customerId", min_length=1),
+        scenario_id: str = Query(alias="scenarioId", min_length=1),
+        limit: int = Query(default=1000, ge=1, le=1000),
+    ) -> dict[str, int | str]:
+        """Run one bounded, development-only query-regression workload step."""
+        if mode == "indexed":
+            query = {"customerId": customer_id}
+            cursor = (
+                orders_collection(settings.mongodb_uri)
+                .find(query)
+                .sort("createdAt", -1)
+                .limit(limit)
+            )
+        else:
+            query = {"demoScenarioId": f"{scenario_id}-missing"}
+            cursor = orders_collection(settings.mongodb_uri).find(query).limit(1)
+        try:
+            count = sum(1 for _ in cursor)
+        except PyMongoError as exc:
+            ERRORS.labels("/dev/scenario/query-regression", type(exc).__name__).inc()
+            raise HTTPException(status_code=503, detail="Scenario query unavailable") from exc
+        return {"mode": mode, "count": count}
+
+
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

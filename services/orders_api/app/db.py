@@ -3,5 +3,5 @@ from pymongo.collection import Collection
 
 
 def orders_collection(uri: str) -> Collection:
-    client = MongoClient(uri, serverSelectionTimeoutMS=3000)
+    client = MongoClient(uri, serverSelectionTimeoutMS=3000, appname="orders-api")
     return client.get_default_database()["orders"]
