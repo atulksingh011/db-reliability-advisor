@@ -173,9 +173,9 @@ class PrometheusAdapter:
                     )
                 evidence_list.append(evidence)
 
-            except (httpx.RequestError, ValueError, KeyError, IndexError) as exc:
+            except (httpx.RequestError, ValueError, KeyError, IndexError):
                 # Record failure for this metric.
-                missing_evidence.append(f"Failed to collect {metric_name} from Prometheus: {exc}")
+                missing_evidence.append(f"Failed to collect {metric_name} from Prometheus")
                 continue
 
         return CollectedEvidence(

@@ -64,7 +64,14 @@ class MongoMetadataAdapter:
 
                 # 1. Current indexes: db.orders.getIndexes()
                 try:
-                    indexes = list(collection.list_indexes())
+                    indexes = [
+                        {
+                            "name": index.get("name"),
+                            "keys": dict(index.get("key", {})),
+                        }
+                        for index in collection.list_indexes()
+                        if isinstance(index, dict)
+                    ]
                     evidence = Evidence(
                         id=str(uuid4()),
                         kind="metadata",
@@ -79,8 +86,8 @@ class MongoMetadataAdapter:
                         timestamp=None,
                     )
                     evidence_list.append(evidence)
-                except Exception as exc:
-                    missing_evidence.append(f"Failed to get indexes: {exc}")
+                except Exception:
+                    missing_evidence.append("Failed to get indexes")
 
                 # 2. Connection limit: db.serverStatus().connections (if available)
                 try:
@@ -104,8 +111,8 @@ class MongoMetadataAdapter:
                             timestamp=None,
                         )
                         evidence_list.append(evidence)
-                except Exception as exc:
-                    missing_evidence.append(f"Failed to get connection limit: {exc}")
+                except Exception:
+                    missing_evidence.append("Failed to get connection limit")
 
                 # 3. MongoDB version: db.buildInfo().version
                 try:
@@ -126,12 +133,12 @@ class MongoMetadataAdapter:
                             timestamp=None,
                         )
                         evidence_list.append(evidence)
-                except Exception as exc:
-                    missing_evidence.append(f"Failed to get MongoDB version: {exc}")
+                except Exception:
+                    missing_evidence.append("Failed to get MongoDB version")
 
-        except Exception as exc:
+        except Exception:
             # If we cannot connect at all, add a general missing evidence.
-            missing_evidence.append(f"Failed to connect to MongoDB: {exc}")
+            missing_evidence.append("Failed to connect to MongoDB")
 
         return CollectedEvidence(
             evidence=evidence_list,

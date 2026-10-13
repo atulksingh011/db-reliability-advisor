@@ -142,6 +142,7 @@ def test_loki_uses_valid_queries_and_preserves_sanitized_provenance(monkeypatch)
 
     def fake_get(url, params, timeout):
         queries.append(params["query"])
+        assert params["limit"] == 500
         data = {"status": "success", "data": {"result": []}}
         if "event=~" in params["query"]:
             data = response_data
@@ -157,9 +158,24 @@ def test_loki_uses_valid_queries_and_preserves_sanitized_provenance(monkeypatch)
     assert "event=~" in queries[1]
     assert "connection" in queries[2]
     assert all(", namespace" not in query for query in queries)
-    assert collected.evidence[0].value["message"] == "email=[REDACTED]"
+    assert collected.evidence[0].value == {"event": "deployment", "service": "orders-api"}
     assert collected.evidence[0].timestamp == datetime(2026, 9, 20, 10, 5, tzinfo=UTC)
     assert collected.evidence[0].observation_window.start_time == make_request().start_time
+
+
+def test_loki_drops_unstructured_payloads_and_redacts_errors(monkeypatch) -> None:
+    def unavailable(*args, **kwargs):
+        raise httpx.ConnectError("password=should-not-leak")
+
+    monkeypatch.setattr("services.analysis_service.app.adapters.loki.httpx.get", unavailable)
+    collected = LokiAdapter("http://loki").collect(make_request())
+
+    assert collected.evidence == []
+    assert collected.missing_evidence == [
+        "Failed to collect mongodb_slow_operation from Loki",
+        "Failed to collect context_event from Loki",
+        "Failed to collect connection_failure from Loki",
+    ]
 
 
 def test_loki_normalizes_mongodb_slow_operation_fields() -> None:
@@ -223,6 +239,7 @@ def test_mongodb_uses_supported_list_indexes_and_tolerates_server_status_denial(
     collected = MongoMetadataAdapter("mongodb://example/reliability_demo").collect(make_request())
 
     assert [item.name for item in collected.evidence] == ["indexes", "version"]
+    assert collected.evidence[0].value == [{"name": "_id_", "keys": {"_id": 1}}]
     assert any("connection limit" in item for item in collected.missing_evidence)
 
 

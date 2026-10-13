@@ -174,6 +174,22 @@ class LokiAdapter:
             normalized["scenarioId"] = scenario_id
         return {key: value for key, value in normalized.items() if value is not None}
 
+    @staticmethod
+    def _normalize_context_event(log_data: Any) -> dict[str, Any] | None:
+        if not isinstance(log_data, dict):
+            return None
+        allowed = {
+            "event",
+            "service",
+            "version",
+            "timestamp",
+            "scenario",
+            "scenarioId",
+            "alert",
+        }
+        normalized = {key: log_data[key] for key in allowed if key in log_data}
+        return normalized if normalized.get("event") else None
+
     def collect(
         self, request: AnalysisRequest, fixture_name: str | None = None
     ) -> CollectedEvidence:
@@ -228,6 +244,7 @@ class LokiAdapter:
                         "start": start_timestamp,
                         "end": end_timestamp,
                         "step": 1,  # 1 second resolution (adjust as needed)
+                        "limit": 500,
                     },
                     timeout=10,
                 )
@@ -272,8 +289,8 @@ class LokiAdapter:
                             # Assuming the log line is a JSON string.
                             log_data = json.loads(raw_line)
                         except (json.JSONDecodeError, TypeError):
-                            # If not JSON, we still create an event with the raw line as message.
-                            log_data = {"raw_message": raw_line}
+                            # Do not persist an unstructured source payload.
+                            continue
 
                         # Sanitize the log data to redact sensitive information.
                         log_data = self._sanitize_value(log_data)
@@ -281,6 +298,12 @@ class LokiAdapter:
                             log_data = self._normalize_slow_operation(log_data)
                             if log_data is None or not log_data:
                                 continue
+                        elif name == "context_event":
+                            log_data = self._normalize_context_event(log_data)
+                            if log_data is None:
+                                continue
+                        else:
+                            log_data = {"observed": True}
 
                         # Create Evidence object.
                         evidence = Evidence(
@@ -304,9 +327,9 @@ class LokiAdapter:
                 KeyError,
                 IndexError,
                 json.JSONDecodeError,
-            ) as exc:
+            ):
                 # Record failure for this query.
-                missing_evidence.append(f"Failed to collect {name} from Loki: {exc}")
+                missing_evidence.append(f"Failed to collect {name} from Loki")
                 continue
 
         return CollectedEvidence(

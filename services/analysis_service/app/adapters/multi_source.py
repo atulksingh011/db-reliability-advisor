@@ -34,10 +34,8 @@ class MultiSourceAdapter:
             for adapter, future in zip(context_adapters, futures, strict=True):
                 try:
                     collected = future.result()
-                except Exception as exc:
-                    missing_evidence.append(
-                        f"Failed to collect from {type(adapter).__name__}: {exc}"
-                    )
+                except Exception:
+                    missing_evidence.append(f"Failed to collect from {type(adapter).__name__}")
                     continue
                 evidence.extend(collected.evidence)
                 missing_evidence.extend(collected.missing_evidence)
@@ -46,10 +44,8 @@ class MultiSourceAdapter:
         for adapter in prometheus_adapters:
             try:
                 collected = adapter.collect(request, comparison_time=comparison_time)
-            except Exception as exc:
-                missing_evidence.append(
-                    f"Failed to collect from {type(adapter).__name__}: {exc}"
-                )
+            except Exception:
+                missing_evidence.append(f"Failed to collect from {type(adapter).__name__}")
                 continue
             evidence.extend(collected.evidence)
             missing_evidence.extend(collected.missing_evidence)

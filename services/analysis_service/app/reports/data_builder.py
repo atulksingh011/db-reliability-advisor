@@ -130,7 +130,11 @@ class TrustedReportDataBuilder:
             )
         else:
             text = f"{cls._label(finding.rule)}: {result}."
-        return ReportFact(text=text, evidence_ids=[], deterministic_finding_ids=[finding.id])
+        return ReportFact(
+            text=text,
+            evidence_ids=finding.evidence_ids,
+            deterministic_finding_ids=[finding.id],
+        )
 
     @staticmethod
     def _is_numeric_comparison(evidence: Evidence) -> bool:
