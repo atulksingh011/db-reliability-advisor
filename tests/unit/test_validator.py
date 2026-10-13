@@ -9,6 +9,7 @@ from services.analysis_service.app.ai.base import (
     RecommendedCheck,
 )
 from services.analysis_service.app.ai.mock_provider import MockAIProvider
+from services.analysis_service.app.ai.prompts import SYSTEM_PROMPT
 from services.analysis_service.app.ai.validator import GroundingValidationError, GroundingValidator
 from tests.unit.test_mock_provider import load_package
 
@@ -17,6 +18,17 @@ def test_validator_accepts_valid_mock_response() -> None:
     package = load_package("scenario-a-contract-b.example.json")
     interpretation = MockAIProvider().analyze(package)
     assert GroundingValidator().validate(interpretation, package) is interpretation
+
+
+def test_ai_prompt_lists_validator_category_contract() -> None:
+    for category in (
+        "database_query",
+        "database_connections",
+        "deterministic_analysis",
+        "unknown",
+    ):
+        assert category in SYSTEM_PROMPT
+    assert "do not invent category names" in SYSTEM_PROMPT
 
 
 def test_validator_rejects_unknown_evidence_id() -> None:

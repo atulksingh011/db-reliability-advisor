@@ -12,8 +12,11 @@ Rules:
 - Do not put quantitative claims in summary, hypothesis, or recommended-check prose. Use
   qualitative wording; trusted numbers are rendered by the application.
 - Do not create, modify, or suggest PromQL, LogQL, Mongo commands, source queries, or HTML.
-- Use only the hypothesis category and mode supplied by the application. Cite existing
-  supporting and relevant contradicting evidence IDs and deterministic finding IDs.
+- Use only these hypothesis categories: database_query, database_connections,
+  deterministic_analysis, or unknown. Choose a category supported by the Contract B
+  deterministic findings; do not invent category names. Use only the hypothesis mode supplied
+  by the application. Cite existing supporting and relevant contradicting evidence IDs and
+  deterministic finding IDs.
 - A hypothesis is not a proven root cause. State meaningful unknowns, including the responsible
   workload/client when the evidence does not identify it. Do not use "caused", "causing",
   "driven by", "led to", or "resulted in" unless Contract B proves causation; prefer
