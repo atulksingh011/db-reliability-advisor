@@ -31,3 +31,19 @@ def test_gateway_exposes_only_documented_read_oriented_surface_paths() -> None:
         assert path in config or path in landing
     assert "location /orders/dev/ { return 404; }" in config
     assert "127.0.0.1:38000:8080" in (ROOT / "docker-compose.yml").read_text()
+
+
+def test_gateway_resolves_backend_dns_at_request_time() -> None:
+    config = (ROOT / "infra/gateway/nginx.conf").read_text()
+
+    assert "resolver 127.0.0.11 valid=10s ipv6=off;" in config
+    for backend, target in {
+        "grafana": "grafana:3000",
+        "prometheus": "prometheus:9090",
+        "alertmanager": "alertmanager:9093",
+        "advisor": "analysis-service:8000",
+        "orders": "orders-api:8001",
+        "loki": "loki:3100",
+    }.items():
+        assert f"zone {backend}_backend 64k;" in config
+        assert f"server {target} resolve;" in config
