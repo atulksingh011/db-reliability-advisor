@@ -165,7 +165,10 @@ class PrometheusAdapter:
                         name=metric_name,
                         value={"before": before_value, "after": after_value},
                         unit=self._unit(metric_name),
-                        source=EvidenceSource(system="prometheus", query=before_query),
+                        source=EvidenceSource(
+                            system="prometheus",
+                            query=f"before: {before_query}; after: {after_query}",
+                        ),
                         observation_window=EvidenceObservationWindow(
                             start_time=request.start_time,
                             end_time=request.end_time,

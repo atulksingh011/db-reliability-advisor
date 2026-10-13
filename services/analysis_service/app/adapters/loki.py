@@ -327,6 +327,7 @@ class LokiAdapter:
                 KeyError,
                 IndexError,
                 json.JSONDecodeError,
+                TypeError,
             ):
                 # Record failure for this query.
                 missing_evidence.append(f"Failed to collect {name} from Loki")

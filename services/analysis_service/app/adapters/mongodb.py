@@ -48,7 +48,12 @@ class MongoMetadataAdapter:
             return CollectedEvidence(evidence=[], missing_evidence=[])
 
         try:
-            with MongoClient(self.uri) as client:
+            with MongoClient(
+                self.uri,
+                serverSelectionTimeoutMS=2000,
+                connectTimeoutMS=2000,
+                socketTimeoutMS=10000,
+            ) as client:
                 # Get the default database from the URI.
                 db = client.get_default_database()
                 if db is None:
@@ -78,7 +83,7 @@ class MongoMetadataAdapter:
                         name="indexes",
                         value=indexes,
                         unit=None,
-                        source=EvidenceSource(system="mongodb", query="db.orders.getIndexes()"),
+                        source=EvidenceSource(system="mongodb", query="db.orders.listIndexes()"),
                         observation_window=EvidenceObservationWindow(
                             start_time=request.start_time,
                             end_time=request.end_time,
@@ -93,12 +98,21 @@ class MongoMetadataAdapter:
                 try:
                     server_status = db.command("serverStatus")
                     connections = server_status.get("connections")
-                    if connections is not None:
+                    canonical_connections = (
+                        {
+                            key: connections[key]
+                            for key in ("current", "available")
+                            if isinstance(connections.get(key), (int, float))
+                        }
+                        if isinstance(connections, dict)
+                        else {}
+                    )
+                    if canonical_connections:
                         evidence = Evidence(
                             id=str(uuid4()),
                             kind="metadata",
                             name="connection_limit",
-                            value=connections,
+                            value=canonical_connections,
                             unit=None,
                             source=EvidenceSource(
                                 system="mongodb",

@@ -70,7 +70,10 @@ def test_prometheus_collects_project_metrics_as_before_after_comparison(monkeypa
     assert connections.value == {"before": 25.0, "after": 92.0}
     assert connections.unit == "percent"
     assert all(item.source.system == "prometheus" for item in collected.evidence)
-    assert all("before:" not in item.source.query for item in collected.evidence)
+    assert all(
+        "before:" in item.source.query and "after:" in item.source.query
+        for item in collected.evidence
+    )
     assert len(queries) == 6
     assert all(
         ("orders_api_" in query and 'job="orders-api"' in query)
@@ -233,13 +236,14 @@ def test_mongodb_uses_supported_list_indexes_and_tolerates_server_status_denial(
 
     monkeypatch.setattr(
         "services.analysis_service.app.adapters.mongodb.MongoClient",
-        lambda uri: FakeClient(),
+        lambda uri, **kwargs: FakeClient(),
     )
 
     collected = MongoMetadataAdapter("mongodb://example/reliability_demo").collect(make_request())
 
     assert [item.name for item in collected.evidence] == ["indexes", "version"]
     assert collected.evidence[0].value == [{"name": "_id_", "keys": {"_id": 1}}]
+    assert collected.evidence[0].source.query == "db.orders.listIndexes()"
     assert any("connection limit" in item for item in collected.missing_evidence)
 
 
