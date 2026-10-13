@@ -1,107 +1,330 @@
 from typing import Any
 
+from ..config import get_settings
 from ..contracts.models import DeterministicFinding, Evidence
 
 
 class DeterministicAnalyzer:
-    """Small, explicit rule set sufficient for the two foundation fixtures."""
+    """
+    Deterministic analysis rules that calculate reproducible facts from evidence.
+
+    All rules operate purely on evidence values - no external data or AI involved.
+    Thresholds are configurable via environment variables.
+    """
+
+    RULE_VERSION = "1.0.0"
+
+    def __init__(self) -> None:
+        self._settings = get_settings()
 
     def analyze(self, evidence: list[Evidence]) -> list[DeterministicFinding]:
+        """
+        Analyze evidence and return deterministic findings.
+
+        Args:
+            evidence: List of evidence items from the evidence builder
+
+        Returns:
+            List of deterministic findings with rule names, results, and evidence IDs
+        """
+        if not evidence:
+            return []
+
         by_name = {item.name: item for item in evidence}
-        if "connection_utilization_percent" in by_name:
-            return self._connection_pressure(by_name)
+        # Check for query regression scenario (Scenario A)
         if "documents_examined" in by_name:
-            return self._query_regression(by_name)
-        # TODO(DBADV-02): Add rule registration only when real scenario requirements exist.
+            return self._analyze_query_regression(by_name)
+
+        # Check for connection pressure scenario (Scenario B)
+        if "connection_utilization_percent" in by_name:
+            return self._analyze_connection_pressure(by_name)
+
+        if "scan_ratio" in by_name and by_name["scan_ratio"].kind == "query_window":
+            return self._analyze_query_window(by_name)
+
+        # Check for latency-only scenario
+        if "request_p95_ms" in by_name:
+            finding = self._create_latency_finding(by_name["request_p95_ms"], "D1")
+            return [finding] if finding else []
+
         return []
 
     @staticmethod
-    def _comparison(evidence: Evidence) -> dict[str, Any]:
-        if not isinstance(evidence.value, dict):
-            raise ValueError(f"Evidence {evidence.id} must contain a comparison object")
-        return evidence.value
-
-    def _latency_finding(self, latency: Evidence, finding_id: str) -> DeterministicFinding:
-        value = self._comparison(latency)
-        before = float(value["before"])
-        after = float(value["after"])
-        increase = round(((after - before) / before) * 100) if before else None
-        return DeterministicFinding(
-            id=finding_id,
-            rule="latency_percent_change",
-            result={"percentIncrease": increase, "beforeMs": before, "afterMs": after},
-            evidence_ids=[latency.id],
-        )
-
-    def _query_regression(self, items: dict[str, Evidence]) -> list[DeterministicFinding]:
-        required = {"documents_examined", "documents_returned", "query_plan", "request_p95_ms"}
-        if not required.issubset(items):
+    def _analyze_query_window(items: dict[str, Evidence]) -> list[DeterministicFinding]:
+        scan_ratio = items["scan_ratio"]
+        values = scan_ratio.value
+        if not isinstance(values, dict) or "average" not in values:
             return []
-        examined = items["documents_examined"]
-        returned = items["documents_returned"]
-        plan = items["query_plan"]
-        examined_value = self._comparison(examined)
-        returned_value = self._comparison(returned)
-        plan_value = self._comparison(plan)
-        findings = [
-            self._latency_finding(items["request_p95_ms"], "D1"),
-            DeterministicFinding(
-                id="D3",
-                rule="query_plan_change",
-                result={"before": plan_value["before"], "after": plan_value["after"]},
-                evidence_ids=[plan.id],
-            ),
-        ]
-        if returned_value.get("before") and returned_value.get("after"):
-            findings.insert(
-                1,
-                DeterministicFinding(
-                    id="D2",
-                    rule="scan_ratio_change",
-                    result={
-                        "before": examined_value["before"] / returned_value["before"],
-                        "after": examined_value["after"] / returned_value["after"],
-                    },
-                    evidence_ids=[examined.id, returned.id],
-                ),
-            )
-        return findings
+        try:
+            average = float(values["average"])
+            minimum = float(values["min"])
+            maximum = float(values["max"])
+        except (KeyError, TypeError, ValueError):
+            return []
 
-    def _connection_pressure(self, items: dict[str, Evidence]) -> list[DeterministicFinding]:
-        required = {
-            "connection_utilization_percent", "connection_failures", "query_plan",
-            "scan_ratio", "request_p95_ms",
+        result: dict[str, Any] = {
+            "averageScanRatio": round(average, 2),
+            "minimumScanRatio": round(minimum, 2),
+            "maximumScanRatio": round(maximum, 2),
         }
-        if not required.issubset(items):
-            return []
-        connections = items["connection_utilization_percent"]
-        failures = items["connection_failures"]
-        connection_value = self._comparison(connections)
-        plan = items["query_plan"]
-        plan_value = self._comparison(plan)
-        ratio = items["scan_ratio"]
-        ratio_value = self._comparison(ratio)
-        change_percent = (
-            round(((ratio_value["after"] - ratio_value["before"]) / ratio_value["before"]) * 100)
-            if ratio_value.get("before")
-            else None
-        )
+        evidence_ids = [scan_ratio.id]
+        activity = items.get("query_activity")
+        if activity and isinstance(activity.value, dict):
+            operation_count = activity.value.get("operationCount")
+            if isinstance(operation_count, int):
+                result["operationCount"] = operation_count
+            evidence_ids.append(activity.id)
+        plan = items.get("query_plan")
+        if plan and isinstance(plan.value, dict) and "window" in plan.value:
+            result["observedPlan"] = plan.value["window"]
+            evidence_ids.append(plan.id)
+
         return [
             DeterministicFinding(
                 id="D1",
-                rule="connection_pressure",
-                result={
-                    "beforePercent": connection_value["before"],
-                    "afterPercent": connection_value["after"],
-                    "thresholdPercent": 90,
-                },
-                evidence_ids=[connections.id, failures.id],
-            ),
-            self._latency_finding(items["request_p95_ms"], "D2"),
-            DeterministicFinding(
-                id="D3",
-                rule="query_plan_stable",
-                result={"plan": plan_value["after"], "scanRatioChangePercent": change_percent},
-                evidence_ids=[plan.id, ratio.id],
-            ),
+                rule="query_scan_ratio_window",
+                result=result,
+                evidence_ids=evidence_ids,
+            )
         ]
+
+    @staticmethod
+    def _comparison(evidence: Evidence) -> dict[str, Any] | None:
+        """Extract comparison dict from evidence value."""
+        if (
+            evidence.kind != "metric_comparison"
+            and evidence.kind != "query_comparison"
+            and evidence.kind != "query_plan"
+        ):
+            return None
+        if not isinstance(evidence.value, dict):
+            return None
+        if "before" not in evidence.value or "after" not in evidence.value:
+            return None
+        return evidence.value
+
+    def _create_latency_finding(
+        self, latency: Evidence, finding_id: str
+    ) -> DeterministicFinding | None:
+        """Create a latency regression finding from metric comparison evidence."""
+        value = self._comparison(latency)
+        if value is None:
+            return None
+        try:
+            before = float(value["before"])
+            after = float(value["after"])
+        except (TypeError, ValueError):
+            return None
+        if before <= 0:
+            return None
+
+        increase = ((after - before) / before) * 100
+        threshold = self._settings.latency_regression_threshold_percent
+        if increase < threshold:
+            return None
+
+        return DeterministicFinding(
+            id=finding_id,
+            rule="latency_percent_change",
+            result={
+                "percentIncrease": round(increase),
+                "beforeMs": before,
+                "afterMs": after,
+            },
+            evidence_ids=[latency.id],
+        )
+
+    def _analyze_query_regression(self, items: dict[str, Evidence]) -> list[DeterministicFinding]:
+        """
+        Analyze query regression scenario (Scenario A).
+
+        Rules:
+        1. Latency regression (request_p95_ms)
+        2. Scan efficiency regression (documents_examined / documents_returned)
+        3. Query plan change (query_plan)
+        """
+        findings: list[DeterministicFinding] = []
+        latency = items.get("request_p95_ms")
+        if latency:
+            latency_finding = self._create_latency_finding(latency, f"D{len(findings) + 1}")
+            if latency_finding:
+                findings.append(latency_finding)
+
+        examined = items.get("documents_examined")
+        returned = items.get("documents_returned")
+        examined_value = self._comparison(examined) if examined else None
+        returned_value = self._comparison(returned) if returned else None
+        try:
+            if examined_value is not None and returned_value is not None:
+                before_returned = max(float(returned_value["before"]), 1)
+                after_returned = max(float(returned_value["after"]), 1)
+                before_ratio = float(examined_value["before"]) / before_returned
+                after_ratio = float(examined_value["after"]) / after_returned
+                increase_percent = ((after_ratio - before_ratio) / max(abs(before_ratio), 1)) * 100
+                if increase_percent >= self._settings.scan_efficiency_change_threshold_percent:
+                    multiplier = after_ratio / before_ratio if before_ratio > 0 else None
+                    findings.append(
+                        DeterministicFinding(
+                            id=f"D{len(findings) + 1}",
+                            rule="scan_ratio_change",
+                            result={
+                                "before": round(before_ratio, 2),
+                                "after": round(after_ratio, 2),
+                                "multiplier": round(multiplier, 2)
+                                if multiplier is not None
+                                else None,
+                            },
+                            evidence_ids=[examined.id, returned.id],
+                        )
+                    )
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+
+        plan = items.get("query_plan")
+        plan_value = self._comparison(plan) if plan else None
+        if plan_value is not None and plan_value["before"] != plan_value["after"]:
+            findings.append(
+                DeterministicFinding(
+                    id=f"D{len(findings) + 1}",
+                    rule="query_plan_change",
+                    result={
+                        "before": plan_value["before"],
+                        "after": plan_value["after"],
+                    },
+                    evidence_ids=[plan.id],
+                )
+            )
+
+        return findings
+
+    def _analyze_connection_pressure(
+        self, items: dict[str, Evidence]
+    ) -> list[DeterministicFinding]:
+        """
+        Analyze connection pressure scenario (Scenario B).
+
+        Rules:
+        1. Connection pressure (connection_utilization_percent + connection_failures)
+        2. Latency regression (request_p95_ms)
+        3. Query plan stability (query_plan + scan_ratio) - contradicting evidence
+        """
+        findings: list[DeterministicFinding] = []
+        pressure = None
+        if "connection_failures" in items:
+            pressure = self._create_connection_pressure_finding(
+                items["connection_utilization_percent"],
+                items["connection_failures"],
+                "D1",
+            )
+        if pressure:
+            findings.append(pressure)
+
+        # Rule 2: Latency Regression
+        if "request_p95_ms" in items:
+            latency_finding = self._create_latency_finding(
+                items["request_p95_ms"], f"D{len(findings) + 1}"
+            )
+            if latency_finding:
+                findings.append(latency_finding)
+
+        # Rule 3: Query Plan Stability (contradicting evidence)
+        plan = items.get("query_plan")
+        ratio = items.get("scan_ratio")
+        if plan and ratio:
+            plan_value = self._comparison(plan)
+            ratio_value = self._comparison(ratio)
+            if plan_value and ratio_value and plan_value["before"] == plan_value["after"]:
+                try:
+                    before_ratio = float(ratio_value["before"])
+                    after_ratio = float(ratio_value["after"])
+                    change_percent = (
+                        (after_ratio - before_ratio) / max(abs(before_ratio), 1)
+                    ) * 100
+                except (TypeError, ValueError):
+                    change_percent = None
+                threshold = self._settings.scan_efficiency_change_threshold_percent
+                if change_percent is not None and abs(change_percent) <= threshold:
+                    findings.append(
+                        DeterministicFinding(
+                            id=f"D{len(findings) + 1}",
+                            rule="query_plan_stable",
+                            result={
+                                "plan": plan_value["after"],
+                                "scanRatioChangePercent": round(change_percent),
+                            },
+                            evidence_ids=[plan.id, ratio.id],
+                        )
+                    )
+            elif (
+                isinstance(plan.value, dict)
+                and isinstance(ratio.value, dict)
+                and len(plan.value.get("observedPlans", [])) == 1
+                and "min" in ratio.value
+                and "max" in ratio.value
+            ):
+                try:
+                    minimum = float(ratio.value["min"])
+                    maximum = float(ratio.value["max"])
+                    change_percent = ((maximum - minimum) / max(abs(minimum), 1)) * 100
+                except (TypeError, ValueError):
+                    change_percent = None
+                threshold = self._settings.scan_efficiency_change_threshold_percent
+                if change_percent is not None and change_percent <= threshold:
+                    findings.append(
+                        DeterministicFinding(
+                            id=f"D{len(findings) + 1}",
+                            rule="query_plan_stable",
+                            result={
+                                "plan": plan.value["window"],
+                                "scanRatioChangePercent": round(change_percent),
+                            },
+                            evidence_ids=[plan.id, ratio.id],
+                        )
+                    )
+
+        return findings
+
+    def _create_connection_pressure_finding(
+        self,
+        connections: Evidence,
+        failures: Evidence,
+        finding_id: str,
+    ) -> DeterministicFinding | None:
+        """Create a pressure finding when utilization is high or failures occurred."""
+        connection_value = self._comparison(connections)
+        if connection_value is None:
+            return None
+        try:
+            before = float(connection_value["before"])
+            after = float(connection_value["after"])
+        except (TypeError, ValueError):
+            return None
+
+        failure_value = failures.value
+        if isinstance(failure_value, dict):
+            failure_count = failure_value.get("count", 0)
+        elif isinstance(failure_value, (int, float)):
+            failure_count = failure_value
+        else:
+            failure_count = 0
+        try:
+            failure_count = max(int(failure_count), 0)
+        except (TypeError, ValueError):
+            failure_count = 0
+
+        threshold = self._settings.connection_pressure_threshold_percent
+        if after < threshold and failure_count == 0:
+            return None
+
+        return DeterministicFinding(
+            id=finding_id,
+            rule="connection_pressure",
+            result={
+                "utilizationPercent": after,
+                "failureCount": failure_count,
+                "beforePercent": before,
+                "afterPercent": after,
+                "thresholdPercent": threshold,
+            },
+            evidence_ids=[connections.id, failures.id],
+        )

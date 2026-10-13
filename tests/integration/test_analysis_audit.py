@@ -2,7 +2,9 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import text
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import inspect, text
 
 from services.analysis_service.app.adapters.mock import MockAdapter
 from services.analysis_service.app.ai.base import AIInterpretation, AIProvider
@@ -30,11 +32,68 @@ def request() -> AnalysisRequest:
     )
 
 
+def test_migration_reconciles_legacy_schema_without_losing_audit_rows(tmp_path) -> None:
+    database_path = tmp_path / "legacy.db"
+    engine = create_database_engine(f"sqlite:///{database_path}")
+    config = Config()
+    config.set_main_option("script_location", "migrations")
+    config.set_main_option("sqlalchemy.url", str(engine.url).replace("%", "%%"))
+    command.upgrade(config, "0001")
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE ai_attempts ADD COLUMN prompt_version VARCHAR(120)"))
+        connection.execute(
+            text(
+                "INSERT INTO analysis_runs "
+                "(analysis_id, status, request_payload, created_at, updated_at) "
+                "VALUES ('AN-LEGACY', 'completed', '{}', '2026-09-20', '2026-09-20')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ai_attempts "
+                "(analysis_id, provider, response_payload, validation_status, "
+                "validation_errors, created_at) "
+                "VALUES ('AN-LEGACY', 'mock', '{}', 'accepted', '[]', '2026-09-20')"
+            )
+        )
+    command.stamp(config, "0002")
+
+    initialize_database(engine)
+
+    inspector = inspect(engine)
+    run_columns = {column["name"] for column in inspector.get_columns("analysis_runs")}
+    attempt_columns = {column["name"] for column in inspector.get_columns("ai_attempts")}
+    with engine.connect() as connection:
+        run_count = connection.execute(text("SELECT COUNT(*) FROM analysis_runs")).scalar_one()
+        attempt_number = connection.execute(
+            text("SELECT attempt_number FROM ai_attempts WHERE analysis_id = 'AN-LEGACY'")
+        ).scalar_one()
+        revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+
+    assert {"target", "replayed_from", "started_at", "completed_at", "failed_at"} <= run_columns
+    assert {"attempt_number", "model", "prompt_version", "error_category"} <= attempt_columns
+    assert {"analysis_lifecycle_events", "validation_outcomes", "fallback_outcomes"} <= set(
+        inspector.get_table_names()
+    )
+    assert run_count == 1
+    assert attempt_number == 1
+    assert revision == "0004"
+
+
 def test_audit_and_replay_use_immutable_contract_b_without_adapter() -> None:
+    class CountingAdapter(MockAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.collect_calls = 0
+
+        def collect(self, request, fixture_name=None):
+            self.collect_calls += 1
+            return super().collect(request, fixture_name)
+
     engine = create_database_engine("sqlite://")
     initialize_database(engine)
     repository = AnalysisRepository(engine)
-    adapter = MockAdapter()
+    adapter = CountingAdapter()
     pipeline = AnalysisPipeline(adapter, MockAIProvider(), repository)
 
     original = pipeline.run(request(), "query-regression")
@@ -43,6 +102,7 @@ def test_audit_and_replay_use_immutable_contract_b_without_adapter() -> None:
     replay_audit = repository.get_audit(replay.analysis_id)
 
     assert replay.analysis_id != original.analysis_id
+    assert adapter.collect_calls == 1
     assert replay_audit["run"]["replayedFrom"] == original.analysis_id
     assert replay_audit["evidence"] == original_audit["evidence"]
     assert replay_audit["deterministicFindings"] == original_audit["deterministicFindings"]

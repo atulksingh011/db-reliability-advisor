@@ -4,6 +4,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from ..adapters.loki import LokiAdapter
+from ..adapters.mongodb import MongoMetadataAdapter
+from ..adapters.multi_source import MultiSourceAdapter
+from ..adapters.prometheus import PrometheusAdapter
 from ..contracts.models import (
     AnalysisAccepted,
     AnalysisRequest,
@@ -13,8 +17,20 @@ from ..contracts.models import (
 from ..orchestration.pipeline import AnalysisPipeline
 from ..reporting.renderer import TEMPLATES
 
+# Contract A API Endpoint
+# Objective: Create the POST /api/v1/analyses endpoint that accepts analysis requests
+# Done:
+#   - Router created
+#   - POST handler implemented with validation of Contract A
+#   - Analysis ID generated in format AN-[random string]
+#   - Request passed to orchestrator for processing
+#   - Error handling for invalid Contract A
+# Note:
+#   - Returns 201 Created (synchronous processing) as per MVP allowance
+#   - Unit tests for endpoint validation not yet implemented
 router = APIRouter(prefix="/api/v1")
 dev_router = APIRouter(prefix="/api/v1/dev/mock")
+live_dev_router = APIRouter(prefix="/api/v1/dev/live")
 pages_router = APIRouter()
 
 
@@ -72,12 +88,15 @@ def get_analysis_report(analysis_id: str, request: Request) -> HTMLResponse:
     )
 
 
+# POST handler for analyses endpoint
 @router.post("/analyses", response_model=AnalysisAccepted, status_code=status.HTTP_201_CREATED)
 def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisAccepted:
     try:
         report = _pipeline(request).run(payload)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=422, detail=str(exc)
+        ) from exc  # Error handling for invalid Contract A
     return AnalysisAccepted(analysis_id=report.analysis_id, status="completed")
 
 
@@ -137,6 +156,28 @@ def _mock_request() -> AnalysisRequest:
 @dev_router.post("/query-regression", response_model=ValidatedReport)
 def run_query_regression(request: Request) -> ValidatedReport:
     return _pipeline(request).run(_mock_request(), fixture_name="query-regression")
+
+
+@live_dev_router.post("/analyses", response_model=ValidatedReport)
+def run_live_analysis(payload: AnalysisRequest, request: Request) -> ValidatedReport:
+    current_pipeline = _pipeline(request)
+    settings = request.app.state.settings
+    live_pipeline = AnalysisPipeline(
+        adapter=MultiSourceAdapter(
+            [
+                PrometheusAdapter(settings.prometheus_url),
+                LokiAdapter(settings.loki_url),
+                MongoMetadataAdapter(settings.mongodb_uri),
+            ]
+        ),
+        provider=current_pipeline.provider,
+        repository=current_pipeline.repository,
+        max_window_minutes=settings.max_analysis_window_minutes,
+    )
+    try:
+        return live_pipeline.run(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @dev_router.post("/connection-pressure", response_model=ValidatedReport)

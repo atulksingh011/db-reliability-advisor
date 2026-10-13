@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from services.analysis_service.app.ai.mock_provider import MockAIProvider
+from services.analysis_service.app.ai.validator import GroundingValidator
 from services.analysis_service.app.contracts.models import AnalysisPackage
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "contracts" / "examples"
@@ -38,3 +39,22 @@ def test_mock_provider_supports_both_scenarios(
     assert not hasattr(response.sections[0], "facts")
     assert not hasattr(response.sections[0], "charts")
     assert not hasattr(response.sections[0], "verification")
+
+
+def test_mock_provider_cites_only_findings_present_in_partial_contract_b() -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    selected = [
+        finding
+        for finding in package.deterministic_findings
+        if finding.rule in {"scan_ratio_change", "query_plan_change"}
+    ]
+    findings = [
+        finding.model_copy(update={"id": f"D{index}"})
+        for index, finding in enumerate(selected, start=1)
+    ]
+    partial_package = package.model_copy(update={"deterministic_findings": findings})
+
+    interpretation = MockAIProvider().analyze(partial_package)
+
+    assert interpretation.sections[0].deterministic_finding_ids == ["D1", "D2"]
+    assert GroundingValidator().validate(interpretation, partial_package) is interpretation

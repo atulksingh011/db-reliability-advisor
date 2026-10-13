@@ -1,10 +1,19 @@
+from pathlib import Path
+
 from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.pool import StaticPool
 
 from .models import Base
 
 
 def create_database_engine(database_url: str) -> Engine:
+    url = make_url(database_url)
+    if url.drivername == "sqlite" and url.database not in {None, "", ":memory:"}:
+        sqlite_path = Path(url.database).expanduser()
+        if not sqlite_path.is_absolute():
+            sqlite_path = (Path.cwd() / sqlite_path).resolve()
+        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
     options: dict[str, object] = {}
     if database_url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}
@@ -32,9 +41,9 @@ def initialize_database(engine: Engine) -> None:
     version_table_empty = False
     if not version_table_missing:
         with engine.connect() as connection:
-            version_table_empty = connection.execute(
-                text("SELECT COUNT(*) FROM alembic_version")
-            ).scalar_one() == 0
+            version_table_empty = (
+                connection.execute(text("SELECT COUNT(*) FROM alembic_version")).scalar_one() == 0
+            )
     if inspector.has_table("analysis_runs") and (version_table_missing or version_table_empty):
         command.stamp(config, "0001")
     command.upgrade(config, "head")

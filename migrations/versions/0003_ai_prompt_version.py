@@ -12,7 +12,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("ai_attempts", sa.Column("prompt_version", sa.String(length=120)))
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("ai_attempts")}
+    if "prompt_version" not in columns:
+        op.add_column("ai_attempts", sa.Column("prompt_version", sa.String(length=120)))
 
 
 def downgrade() -> None:

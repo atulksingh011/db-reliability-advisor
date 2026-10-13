@@ -66,3 +66,16 @@ def test_report_assembler_maps_trusted_data_to_multi_section_references() -> Non
     assert report.sections[1].charts == []
     assert [item.evidence_ids for item in report.sections[0].verification] == [["E2"]]
     assert [item.evidence_ids for item in report.sections[1].verification] == [["E5"]]
+
+
+def test_finding_facts_preserve_contract_b_evidence_references() -> None:
+    package = load_package("scenario-a-contract-b.example.json")
+    trusted = TrustedReportDataBuilder().build(package)
+
+    finding_fact = next(
+        fact
+        for fact in trusted.sections["default"].facts
+        if fact.deterministic_finding_ids == ["D1"]
+    )
+
+    assert finding_fact.evidence_ids == ["E2"]

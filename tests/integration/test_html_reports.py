@@ -8,6 +8,9 @@ def test_mock_report_renders_and_feedback_form_creates_contract_d(monkeypatch) -
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.config import get_settings
+
+    get_settings.cache_clear()
     from services.analysis_service.app.main import create_app
 
     app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
@@ -19,8 +22,9 @@ def test_mock_report_renders_and_feedback_form_creates_contract_d(monkeypatch) -
     report_response = client.get(f"/analyses/{report['analysisId']}/report")
     assert report_response.status_code == 200
     assert "Connection Pressure" in report_response.text
-    assert 'name="analysisId"' in report_response.text
-    assert 'name="verdict" value="partially_correct"' in report_response.text
+    normalized_report_html = " ".join(report_response.text.split())
+    assert 'name="analysisId"' in normalized_report_html
+    assert 'name="verdict" value="partially_correct"' in normalized_report_html
 
     feedback_response = client.post(
         f"/api/v1/analyses/{report['analysisId']}/feedback",
@@ -75,23 +79,101 @@ def test_feedback_api_enforces_finding_ownership_and_payload_validation(monkeypa
         },
     )
     assert cross_analysis.status_code == 422
-    assert client.post(
-        f"/api/v1/analyses/{second['analysisId']}/feedback",
+    assert (
+        client.post(
+            f"/api/v1/analyses/{second['analysisId']}/feedback",
+            json={
+                "analysisId": second["analysisId"],
+                "findingId": "D-CROSS",
+                "verdict": "incorrect",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/v1/analyses/{first['analysisId']}/feedback",
+            json={"analysisId": first["analysisId"], "verdict": "unsupported"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            f"/api/v1/analyses/{first['analysisId']}/feedback",
+            content="not-json",
+            headers={"content-type": "application/json"},
+        ).status_code
+        == 422
+    )
+
+
+def test_create_analysis_accepts_valid_contract_a(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.config import get_settings
+
+    get_settings.cache_clear()
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
+    response = TestClient(app).post(
+        "/api/v1/analyses",
         json={
-            "analysisId": second["analysisId"],
-            "findingId": "D-CROSS",
-            "verdict": "incorrect",
+            "target": "orders-api",
+            "startTime": "2026-09-20T10:00:00Z",
+            "endTime": "2026-09-20T10:10:00Z",
         },
-    ).status_code == 201
-    assert client.post(
-        f"/api/v1/analyses/{first['analysisId']}/feedback",
-        json={"analysisId": first["analysisId"], "verdict": "unsupported"},
-    ).status_code == 422
-    assert client.post(
-        f"/api/v1/analyses/{first['analysisId']}/feedback",
-        content="not-json",
-        headers={"content-type": "application/json"},
-    ).status_code == 422
+    )
+
+    assert response.status_code == 201
+    assert response.json()["analysisId"].startswith("AN-")
+    assert response.json()["status"] == "completed"
+
+
+def test_create_analysis_rejects_invalid_contract_a(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.config import get_settings
+
+    get_settings.cache_clear()
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
+    response = TestClient(app).post(
+        "/api/v1/analyses",
+        json={
+            "target": "orders-api",
+            "startTime": "2026-09-20T10:10:00Z",
+            "endTime": "2026-09-20T10:00:00Z",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_live_evidence_mode_wires_configured_adapters(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("AI_PROVIDER", "mock")
+    from services.analysis_service.app.config import get_settings
+
+    get_settings.cache_clear()
+    from services.analysis_service.app.adapters.multi_source import MultiSourceAdapter
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(
+        Settings(
+            app_env="test",
+            database_url="sqlite://",
+            ai_provider="mock",
+            evidence_mode="live",
+        )
+    )
+
+    assert isinstance(app.state.pipeline.adapter, MultiSourceAdapter)
+    assert len(app.state.pipeline.adapter.adapters) == 3
 
 
 def test_report_template_escapes_ai_controlled_text() -> None:
@@ -157,7 +239,8 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
     )
     assert "The query plan is the best-supported explanation." in rendered
     assert "1.5%" in rendered and "2.9%" in rendered
-    assert "Copy query" in rendered
+    normalized_rendered = " ".join(rendered.split())
+    assert "Copy query" in normalized_rendered
     assert "query &lt;safe&gt;" in rendered
 
     insufficient = TEMPLATES.env.get_template("report.html").render(
@@ -176,6 +259,20 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
     assert "Evidence status" in insufficient
     assert "Likely issue" not in insufficient
     assert "Hypothesis confidence" not in insufficient
+
+    empty_insufficient = TEMPLATES.env.get_template("report.html").render(
+        report={
+            "target": "orders-api",
+            "status": "insufficient_data",
+            "window": {"startTime": "start", "endTime": "end"},
+            "summary": "There is not enough evidence.",
+            "analysisId": "AN-EMPTY",
+            "sections": [],
+            "limitations": ["No comparison evidence was found."],
+        }
+    )
+    assert "Evidence status" in empty_insufficient
+    assert "There is not enough evidence." in empty_insufficient
 
 
 def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:

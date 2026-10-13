@@ -26,8 +26,7 @@ class GeminiAIProvider(AIProvider):
 
     def analyze(self, package: AnalysisPackage) -> AIInterpretation:
         response = self._generate(
-            f"{SYSTEM_PROMPT}\nAnalysis package (Contract B):\n"
-            f"{package.model_dump_json(by_alias=True)}"
+            f"{SYSTEM_PROMPT}\nAnalysis package (Contract B):\n{package.to_contract_json()}"
         )
         if not response.text:
             raise GeminiOutputError("Gemini returned an empty interpretation")
@@ -48,7 +47,7 @@ class GeminiAIProvider(AIProvider):
             f"{SYSTEM_PROMPT}\nRepair exactly one prior structured-output attempt.\n"
             f"Validation errors: {json.dumps(errors)}\n"
             f"Original response: {original_response or '(unavailable)'}\n"
-            f"Contract B: {package.model_dump_json(by_alias=True)}\n"
+            f"Contract B: {package.to_contract_json()}\n"
             "Correct structure and grounding only. Do not add evidence, measurements, queries, "
             "charts, or HTML. Return only the defined structured output."
         )

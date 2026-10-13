@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -46,6 +47,15 @@ def test_sqlite_repository_create_load_and_feedback() -> None:
         "comment": "mock assessment",
     }
     assert stored_feedback["createdAt"]
+
+
+def test_sqlite_database_creates_missing_parent_directories(tmp_path: Path) -> None:
+    db_path = tmp_path / "nested" / "data" / "analysis.db"
+    engine = create_database_engine(f"sqlite:///{db_path}")
+
+    assert db_path.parent.exists()
+    initialize_database(engine)
+    assert engine.url.database == str(db_path)
 
 
 def test_feedback_rejects_unknown_analysis_or_finding_and_long_comment() -> None:

@@ -1,11 +1,18 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 from pydantic import ValidationError
 
-from services.analysis_service.app.contracts.models import AnalysisRequest
+from services.analysis_service.app.contracts.models import (
+    AnalysisPackage,
+    AnalysisRequest,
+    AnalysisWindow,
+    Evidence,
+    EvidenceSource,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "contracts"
@@ -63,6 +70,41 @@ def test_contract_b_supports_optional_provenance_without_mandatory_source_query(
         }
     )
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(example)
+
+
+def test_runtime_contract_b_serialization_omits_null_optional_fields() -> None:
+    schema = json.loads((CONTRACTS / "contract-b-analysis-package.schema.json").read_text())
+    package = AnalysisPackage(
+        analysis_id="AN-RUNTIME",
+        target="orders-api",
+        window=AnalysisWindow(
+            start_time=datetime(2026, 9, 20, 10, tzinfo=UTC),
+            end_time=datetime(2026, 9, 20, 10, 10, tzinfo=UTC),
+        ),
+        evidence=[
+            Evidence(
+                id="E1",
+                kind="metadata",
+                name="indexes",
+                value=[],
+                unit=None,
+                source=EvidenceSource(system="mongodb", query=None),
+                observation_window=None,
+                timestamp=None,
+            )
+        ],
+        deterministic_findings=[],
+        missing_evidence=[],
+    )
+
+    serialized_forms = [package.to_contract_dict(), json.loads(package.to_contract_json())]
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    for serialized in serialized_forms:
+        validator.validate(serialized)
+        assert "unit" not in serialized["evidence"][0]
+        assert "query" not in serialized["evidence"][0]["source"]
+        assert "timestamp" not in serialized["evidence"][0]
+        assert "observationWindow" not in serialized["evidence"][0]
 
 
 def test_invalid_feedback_verdict_fails() -> None:
