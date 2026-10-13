@@ -303,6 +303,28 @@ class AnalysisPipeline:
         return fallback
 
     @staticmethod
+    def _comparison_direction(before: int | float, after: int | float) -> str:
+        if after > before:
+            return "increased"
+        if after < before:
+            return "decreased"
+        return "remained unchanged"
+
+    @classmethod
+    def _comparison_phrase(
+        cls,
+        label: str,
+        before: int | float,
+        after: int | float,
+        unit: str = "",
+    ) -> str:
+        suffix = f" {unit}" if unit else ""
+        if after == before:
+            return f"{label} remained unchanged at {before}{suffix}"
+        direction = cls._comparison_direction(before, after)
+        return f"{label} {direction} from {before}{suffix} to {after}{suffix}"
+
+    @staticmethod
     def _fallback_summary(package) -> str:
         evidence = {item.name: item.value for item in package.evidence}
         latency = evidence.get("request_p95_ms")
@@ -310,12 +332,19 @@ class AnalysisPipeline:
         returned = evidence.get("documents_returned")
         plan = evidence.get("query_plan")
         if all(isinstance(item, dict) for item in (latency, examined, returned, plan)):
+            latency_text = AnalysisPipeline._comparison_phrase(
+                "Request latency", latency["before"], latency["after"], "ms"
+            )
+            examined_text = AnalysisPipeline._comparison_phrase(
+                "documents examined", examined["before"], examined["after"]
+            )
+            returned_text = AnalysisPipeline._comparison_phrase(
+                "documents returned", returned["before"], returned["after"]
+            )
             return (
                 "AI interpretation unavailable. "
-                f"Request latency increased from {latency['before']} ms to {latency['after']} ms. "
-                f"The query returned {returned['before']} to {returned['after']} documents "
-                f"while documents examined rose from {examined['before']} to "
-                f"{examined['after']}; the observed plan changed from {plan['before']} "
+                f"{latency_text}. The query's {examined_text} and {returned_text}; "
+                f"the observed plan changed from {plan['before']} "
                 f"to {plan['after']}."
             )
         if package.deterministic_findings:
@@ -331,8 +360,17 @@ class AnalysisPipeline:
     @staticmethod
     def _fallback_checks(package) -> list[RecommendedCheck]:
         evidence_ids = [item.id for item in package.evidence]
-        names = {item.name for item in package.evidence}
+        evidence = {item.name: item.value for item in package.evidence}
+        names = set(evidence)
         if {"documents_examined", "documents_returned", "query_plan"}.issubset(names):
+            examined = evidence["documents_examined"]
+            returned = evidence["documents_returned"]
+            examined_direction = AnalysisPipeline._comparison_direction(
+                examined["before"], examined["after"]
+            )
+            returned_direction = AnalysisPipeline._comparison_direction(
+                returned["before"], returned["after"]
+            )
             return [
                 RecommendedCheck(
                     type="inspect",
@@ -348,7 +386,12 @@ class AnalysisPipeline:
                         "Compare documents examined with documents returned before and after "
                         "the regression."
                     ),
-                    purpose="Determine why query work increased while result volume stayed stable.",
+                    purpose=(
+                        "Determine why documents examined "
+                        f"{examined_direction} "
+                        "while documents returned "
+                        f"{returned_direction}."
+                    ),
                     evidence_ids=evidence_ids,
                 ),
                 RecommendedCheck(

@@ -1,7 +1,10 @@
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 
 from services.analysis_service.app.adapters.base import CollectedEvidence
 from services.analysis_service.app.adapters.mock import MockAdapter
@@ -10,7 +13,7 @@ from services.analysis_service.app.ai.mock_provider import MockAIProvider
 from services.analysis_service.app.analyzers.deterministic import DeterministicAnalyzer
 from services.analysis_service.app.api import analyses
 from services.analysis_service.app.config import Settings
-from services.analysis_service.app.contracts.models import AnalysisRequest
+from services.analysis_service.app.contracts.models import AnalysisPackage, AnalysisRequest
 from services.analysis_service.app.evidence.builder import EvidenceBuilder
 from services.analysis_service.app.main import create_app
 from services.analysis_service.app.orchestration.pipeline import AnalysisPipeline
@@ -243,6 +246,100 @@ class UnavailableProvider(AIProvider):
         raise RuntimeError("provider unavailable")
 
 
+def exact_report_accuracy_package(returned_before=101, returned_after=0):
+    package_path = (
+        Path(__file__).parents[2] / "contracts/examples/scenario-a-contract-b.example.json"
+    )
+    package = json.loads(package_path.read_text())
+    values = {
+        "request_p95_ms": {"before": 49.41035175232228, "after": 24.063694903646777},
+        "documents_examined": {"before": 101, "after": 10000},
+        "documents_returned": {"before": returned_before, "after": returned_after},
+        "query_plan": {
+            "before": "IXSCAN { customerId: 1, status: 1, createdAt: -1 }",
+            "after": "COLLSCAN",
+        },
+    }
+    for evidence in package["evidence"]:
+        if evidence["name"] in values:
+            evidence["value"] = values[evidence["name"]]
+    return package
+
+
+def test_fallback_report_uses_trusted_directions_and_valid_contract_c() -> None:
+    package = exact_report_accuracy_package()
+
+    class ExactFallbackAdapter:
+        def collect(self, request, fixture_name=None):
+            return CollectedEvidence(
+                evidence=AnalysisPackage.model_validate(package).evidence,
+                missing_evidence=package["missingEvidence"],
+            )
+
+    engine = create_database_engine("sqlite://")
+    initialize_database(engine)
+    repository = AnalysisRepository(engine)
+    report = AnalysisPipeline(
+        ExactFallbackAdapter(), UnavailableProvider(), repository
+    ).run(request_at(10))
+
+    assert (
+        "Request latency decreased from 49.41035175232228 ms to "
+        "24.063694903646777 ms"
+    ) in report.summary
+    assert "increased from 49.41035175232228 ms to 24.063694903646777 ms" not in report.summary
+    assert "documents examined increased from 101 to 10000" in report.summary
+    assert "documents returned decreased from 101 to 0" in report.summary
+
+    audit = repository.get_audit(report.analysis_id)
+    purpose = audit["fallback"][0]["report"]["sections"][0]["recommendedChecks"][1]["purpose"]
+    assert purpose == (
+        "Determine why documents examined increased while documents returned decreased."
+    )
+    assert "result volume stayed stable" not in purpose
+
+    report_payload = report.model_dump(mode="json", by_alias=True)
+    schema = json.loads(
+        (
+            Path(__file__).parents[2] / "contracts/contract-c-validated-report.schema.json"
+        ).read_text()
+    )
+    Draft202012Validator(schema).validate(report_payload)
+    html = TEMPLATES.env.get_template("report.html").render(report=report_payload)
+    assert "Request latency decreased" in html
+    assert "documents examined increased" in html
+    assert "documents returned decreased" in html
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [(100, 50, "decreased"), (50, 100, "increased"), (50, 50, "remained unchanged")],
+)
+def test_fallback_direction_wording_covers_decrease_increase_and_unchanged(
+    before, after, expected
+) -> None:
+    package = exact_report_accuracy_package()
+    package["evidence"][1]["value"] = {"before": before, "after": after}
+    summary = AnalysisPipeline._fallback_summary(
+        AnalysisPackage.model_validate(package)
+    )
+    assert f"Request latency {expected}" in summary
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [(101, 0, "decreased"), (50, 50, "remained unchanged"), (0, 50, "increased")],
+)
+def test_fallback_returned_volume_wording_reflects_actual_comparison(
+    before, after, expected
+) -> None:
+    package = AnalysisPackage.model_validate(
+        exact_report_accuracy_package(before, after)
+    )
+    purpose = AnalysisPipeline._fallback_checks(package)[1].purpose
+    assert f"documents returned {expected}" in purpose
+
+
 def test_provider_failure_returns_deterministic_fallback_report() -> None:
     engine = create_database_engine("sqlite://")
     initialize_database(engine)
@@ -268,7 +365,8 @@ def test_query_fallback_report_answers_the_five_engineer_questions() -> None:
     )
 
     assert "200" in report.summary and "1000" in report.summary
-    assert "documents examined rose" in report.summary
+    assert "documents examined increased" in report.summary
+    assert "documents returned remained unchanged" in report.summary
     assert {"request-p95-ms", "documents-examined", "documents-returned", "scan-ratio"} <= {
         chart.id for chart in section.charts
     }
