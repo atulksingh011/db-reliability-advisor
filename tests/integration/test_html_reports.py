@@ -25,6 +25,9 @@ def test_mock_report_renders_and_feedback_form_creates_contract_d(monkeypatch) -
     normalized_report_html = " ".join(report_response.text.split())
     assert 'name="analysisId"' in normalized_report_html
     assert 'name="verdict" value="partially_correct"' in normalized_report_html
+    assert "/static/vendor/bootstrap/bootstrap.min.css" in report_response.text
+    assert "/static/vendor/bootstrap-icons/bootstrap-icons.min.css" in report_response.text
+    assert "bi-database" in report_response.text
 
     feedback_response = client.post(
         f"/api/v1/analyses/{report['analysisId']}/feedback",
@@ -273,6 +276,22 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
     )
     assert "Evidence status" in empty_insufficient
     assert "There is not enough evidence." in empty_insufficient
+
+
+def test_reporting_vendor_assets_are_pinned_and_self_hosted() -> None:
+    from pathlib import Path
+
+    static_dir = Path(__file__).parents[2] / "services/analysis_service/app/reporting/static"
+    assert "5.3.3" in (static_dir / "vendor/README.md").read_text()
+    assert "1.11.3" in (static_dir / "vendor/README.md").read_text()
+    assert (static_dir / "vendor/bootstrap/bootstrap.min.css").stat().st_size > 100_000
+    assert (static_dir / "vendor/bootstrap/bootstrap.bundle.min.js").stat().st_size > 50_000
+    assert (
+        static_dir / "vendor/bootstrap-icons/fonts/bootstrap-icons.woff2"
+    ).stat().st_size > 50_000
+    assert "fonts/bootstrap-icons.woff2" in (
+        static_dir / "vendor/bootstrap-icons/bootstrap-icons.min.css"
+    ).read_text()
 
 
 def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:
