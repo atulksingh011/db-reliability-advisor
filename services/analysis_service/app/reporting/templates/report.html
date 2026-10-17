@@ -1,128 +1,18 @@
-<!doctype html>
-<html lang="en">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ report.target }} reliability report</title>
-  <link rel="stylesheet" href="{{ request.scope.root_path if request is defined else '' }}/static/report.css">
-</head>
-
-<body>
-  <main class="shell">
-    <p><a href="{{ request.scope.root_path if request is defined else '' }}/">← Run another analysis</a></p>
-    <header class="hero panel">
-      <div>
-        <p class="eyebrow">Database Reliability Analysis</p>
-        <h1>{{ report.target }}</h1>
-        <p class="muted">{{ report.window.startTime }} → {{ report.window.endTime }}</p>
-      </div><span class="status status-{{ report.status }}">{{ report.status }}</span>
-    </header>
-    {% if not report.sections and report.status in ['insufficient_data', 'failed'] %}
-    <section class="panel assessment evidence-status">
-      <p class="eyebrow">Evidence status</p>
-      <h2>{{ report.status }}</h2>
-      <p class="summary">{{ report.summary }}</p>
-      <p class="muted">A supported hypothesis is not available from the collected evidence.</p>
-    </section>
-    {% endif %}
-    {% for section in report.sections %}
-    <section aria-labelledby="section-{{ section.id }}">
-      {% if report.status == 'insufficient_data' or report.status == 'failed' %}<div class="panel assessment">
-        <p class="eyebrow">Evidence status</p>
-        <h2 id="section-{{ section.id }}">{{ section.title }}</h2>
-        <h3>Assessment</h3>
-        <p class="summary">{{ report.summary }}</p>
-        <p class="muted">A supported hypothesis is not available from the collected evidence.</p>
-      </div>{% else %}<div class="panel assessment">
-        <p class="eyebrow">Likely issue</p>
-        <h2 id="section-{{ section.id }}">{{ section.title }}</h2>
-        <h3>Quick assessment</h3>
-        <p class="summary">{{ report.summary }}</p>
-        <div class="hypothesis">
-          <h3>Hypothesis</h3>
-          <p>{{ section.hypothesis.text }}</p>
-        </div>
-        <div class="confidence"><span>Hypothesis confidence</span><strong>{{ section.hypothesis.confidence
-            }}</strong><small>Confidence describes support for the explanation, not proof of root cause.</small></div>
-      </div>{% endif %}
-      <div class="panel">
-        <h2>Observed impact</h2>
-        <div class="metric-grid">{% for chart in section.charts if chart.id in ['connection-utilization-percent',
-          'request-p95-ms', 'request-error-rate-percent'] %}<article class="metric-card">
-            <h3>{{ chart.title }}</h3>
-            <p><strong>{{ chart.series[0].value }}{% if chart.unit == 'percent' %}%{% elif chart.unit %} {{ chart.unit
-                }}{% endif %}</strong><span> → </span><strong>{{ chart.series[1].value }}{% if chart.unit == 'percent'
-                %}%{% elif chart.unit %} {{ chart.unit }}{% endif %}</strong></p>
-          </article>{% endfor %}{% for fact in section.facts if fact.text.startswith('Connection failures were present')
-          %}<article class="metric-card">
-            <h3>Connection failures</h3>
-            <p><strong>{{ fact.text }}</strong></p>
-          </article>{% endfor %}</div>
-      </div>
-      <div class="two-column">
-        <section class="panel evidence supporting">
-          <h2>What evidence supports this?</h2>
-          <h3>Supporting evidence</h3>
-          <ul>{% for fact in section.facts if fact.evidenceIds and fact.evidenceIds[0] in
-            section.hypothesis.supportingEvidenceIds %}<li>{{ fact.text }} <small>{{ fact.evidenceIds|join(', ')
-                }}</small></li>{% endfor %}</ul>
-        </section>
-        <section class="panel evidence contradicting">
-          <h2>What contradicts this?</h2>
-          <h3>Query/index regression</h3>
-          {% if section.hypothesis.contradictingEvidenceIds %}<ul>{% for fact in section.facts if fact.evidenceIds and
-            fact.evidenceIds[0] in
-            section.hypothesis.contradictingEvidenceIds %}<li>{{ fact.text }} <small>{{ fact.evidenceIds|join(', ')
-                }}</small></li>{% endfor %}</ul>{% else %}<p class="muted">No contradicting evidence was identified.</p>
-          <p class="muted">Not applicable</p>{% endif %}
-        </section>
-      </div>
-      <section class="panel next-step">
-        <h2>What should I investigate next?</h2>
-        <ol>{% for check in section.recommendedChecks %}<li>{{ check }}</li>{% endfor %}</ol>
-      </section>
-      <section class="panel verification">
-        <h2>How can I verify this?</h2>{% if section.verification %}<div class="query-list">{% for item in
-          section.verification %}<article class="query-card">
-            <div><strong>{{ item.system|upper }}</strong><span class="query-mode">{{ item.mode }}</span></div>
-            <code>{{ item.query }}</code>
-            <div class="button-row"><button type="button" class="button copy-query" data-query="{{ item.query }}">Copy
-                query</button><span class="copy-status" aria-live="polite"></span></div><small>Related evidence: {{
-              item.evidenceIds|join(', ') }}</small>{% if item.mode == 'illustrative' %}<p class="muted">NOT EXECUTED IN
-              THIS MOCK SCENARIO.</p>{% endif %}
-          </article>{% endfor %}</div>{% else %}<p class="muted">No trusted verification query was supplied for this
-          report.</p>{% endif %}
-      </section>
-      <section class="panel limitations">
-        <h2>What this report has NOT established</h2>
-        <ul>{% for item in section.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
-      </section>
-      <details class="panel details">
-        <summary>Detailed evidence</summary>
-        <ul>{% for fact in section.facts %}<li>{{ fact.text }}{% if fact.evidenceIds or fact.deterministicFindingIds %}
-            <small>{% if fact.evidenceIds %}Evidence: {{ fact.evidenceIds|join(', ') }}{% endif %}{% if fact.evidenceIds
-              and fact.deterministicFindingIds %}; {% endif %}{% if fact.deterministicFindingIds %}findings: {{
-              fact.deterministicFindingIds|join(', ') }}{% endif %}</small>{% endif %}
-          </li>{% endfor %}</ul>
-      </details>
-    </section>{% endfor %}
-    <section class="panel limitations">
-      <h2>Report limitations</h2>
-      <ul>{% for item in report.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
-    </section>
-    <section class="panel">
-      <h2>Feedback</h2>
-        <form method="post" action="{{ request.scope.root_path if request is defined else '' }}/api/v1/analyses/{{ report.analysisId }}/feedback" class="feedback-form"><input
-          type="hidden" name="analysisId" value="{{ report.analysisId }}"><label><input type="radio" name="verdict"
-            value="correct" required> Correct</label><label><input type="radio" name="verdict"
-            value="partially_correct"> Partially correct</label><label><input type="radio" name="verdict"
-            value="incorrect"> Incorrect</label><label for="comment">Optional comment</label><textarea id="comment"
-          name="comment" rows="4" maxlength="4000"></textarea><button type="submit" class="button primary">Submit
-          feedback</button></form>
-    </section>
-  </main>
-  <script>document.querySelectorAll('.copy-query').forEach(function (button) { button.addEventListener('click', function () { var query = button.dataset.query; var status = button.nextElementSibling; if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(query).then(function () { status.textContent = 'Copied'; }, function () { status.textContent = 'Copy unavailable'; }); } else { status.textContent = 'Copy unavailable'; } }); });</script>
-</body>
-
-</html>
+{% set page = page if page is defined else report_page_model(report) %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ page.report.target }} reliability report</title><link rel="stylesheet" href="{{ request.scope.root_path if request is defined else '' }}/static/report.css"></head>
+<body><main class="shell">{% include "_header.html" %}
+  <p class="back-link"><a href="{{ request.scope.root_path if request is defined else '' }}/">← Run another analysis</a></p>
+  <section class="context-bar panel" aria-label="Report context"><div><span class="context-label">Target</span><strong>{{ page.report.target }}</strong></div><span class="status status-{{ page.report.status }}">{{ page.status_label }}</span><div><span class="context-label">Analysis window</span><strong>{{ page.start_display }} – {{ page.end_display }}</strong></div><div><span class="context-label">Duration</span><strong>{{ page.duration }}</strong></div><div><span class="context-label">Analysis ID</span><code>{{ page.report.analysisId }}</code></div>{% if page.mock_data %}<span class="badge badge-mock">Mock data</span>{% endif %}</section>
+  {% if not page.sections %}<section class="panel assessment"><p class="eyebrow">Evidence status</p><h1>{{ page.status_label }}</h1><p class="summary">{{ page.report.summary }}</p><p class="muted">A supported hypothesis is not available from the collected evidence.</p></section>{% endif %}
+  {% for section in page.sections %}<section class="report-section" aria-labelledby="section-{{ section.id }}"><span class="sr-only">What evidence supports this?</span>
+    <div class="diagnosis panel"><div class="trusted-diagnosis"><p class="eyebrow">{{ 'Detected condition' if section.condition_title != 'Observed condition' else 'Observed condition' }}</p><h1 id="section-{{ section.id }}">{{ section.condition_title }}</h1><p>{{ section.condition_description }}</p><p class="summary">{{ page.report.summary }}</p></div><div class="hypothesis"><p class="eyebrow">Likely cause / AI hypothesis</p>{% if page.report.status in ['insufficient_data', 'failed'] or not section.hypothesis.text %}<h2>AI interpretation unavailable</h2><p class="muted">Trusted evidence is shown below without a causal hypothesis.</p>{% else %}<p class="hypothesis-text">{{ section.hypothesis.text }}</p><div class="confidence"><span>Confidence</span><strong>{{ section.hypothesis.confidence }}</strong><small>Confidence describes how strongly the available evidence supports this explanation; it is not proof of root cause.</small></div>{% endif %}</div></div>
+    <section class="panel"><div class="section-heading section-heading-plain"><div><p class="eyebrow">Trusted evidence</p><h2>Key signals</h2></div></div><div class="metric-grid">{% for metric in section.metrics %}<article class="metric-card"><h3>{{ metric.label }}</h3><p>{% if metric.before is not none %}<strong>{{ metric.before }}{% if metric.unit == 'percent' %}%{% endif %}</strong><span> → </span><strong>{{ metric.after }}{% if metric.unit == 'percent' %}%{% endif %}</strong>{% else %}<strong>{{ metric.after }}</strong>{% endif %}{% if metric.unit and metric.unit != 'percent' %}<small>{{ metric.unit }}</small>{% endif %}</p></article>{% else %}<p class="muted">No trusted comparison signals are available.</p>{% endfor %}</div></section>
+    <div class="two-column evidence-columns"><section class="panel evidence-table"><div class="section-heading section-heading-plain"><div><h2>Supporting evidence</h2><p class="muted">Trusted observations supporting the interpretation.</p></div></div>{% if section.supporting_rows %}<div class="table-scroll"><table><thead><tr><th>Signal</th><th>Observation</th><th>Evidence</th></tr></thead><tbody>{% for row in section.supporting_rows %}<tr><td>{{ row.signal }}</td><td>{{ row.observation }}</td><td>{% for id in row.evidence %}<span class="evidence-id">{{ id }}</span>{% endfor %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No supporting evidence was identified in the available evidence.</p>{% endif %}</section><section class="panel evidence-table"><div class="section-heading section-heading-plain"><div><h2>Contradicting evidence</h2><p class="muted">Evidence that qualifies the hypothesis.</p></div></div>{% if section.contradicting_rows %}<div class="table-scroll"><table><thead><tr><th>Signal</th><th>Observation</th><th>Evidence</th></tr></thead><tbody>{% for row in section.contradicting_rows %}<tr><td>{{ row.signal }}</td><td>{{ row.observation }}</td><td>{% for id in row.evidence %}<span class="evidence-id">{{ id }}</span>{% endfor %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">None identified<br><small>No contradicting evidence was identified in the available evidence.</small></p>{% endif %}</section></div>
+    <section class="panel investigation"><p class="eyebrow">Next step</p><h2>What should I investigate next?</h2><div class="investigation-grid">{% for check in section.checks %}<article class="investigation-card"><span class="step-number">{{ loop.index }}</span><div><h3>{{ check.action }}</h3>{% if check.purpose %}<p><strong>Why</strong> {{ check.purpose }}</p>{% endif %}</div></article>{% else %}<p class="muted">No read-only investigation checks were supplied.</p>{% endfor %}</div></section>
+    <div class="disclosure-grid"><details class="panel details"><summary>Verify the evidence <span class="summary-meta">{{ section.verification|length }} evidence queries</span></summary>{% if section.verification %}<div class="query-list">{% for item in section.verification %}<article class="query-card"><div><strong>{{ item.system|upper }}</strong><span class="query-mode">{{ item.mode }}</span></div><code>{{ item.query }}</code><div class="button-row"><button type="button" class="button copy-query" data-query="{{ item.query }}">Copy query</button><span class="copy-status" aria-live="polite"></span></div><small>Related evidence: {{ item.evidenceIds|join(', ') }}</small>{% if item.mode == 'illustrative' %}<p class="muted">NOT EXECUTED IN THIS MOCK SCENARIO.</p>{% endif %}</article>{% endfor %}</div>{% else %}<p class="muted">No trusted verification query was supplied for this report.</p>{% endif %}</details><details class="panel details"><summary>Detailed evidence <span class="summary-meta">{{ section.facts|length }} facts</span></summary><ul class="detail-list">{% for fact in section.facts %}<li>{{ fact.text }} <small>{% if fact.evidenceIds %}Evidence: {{ fact.evidenceIds|join(', ') }}{% endif %}{% if fact.deterministicFindingIds %} · Findings: {{ fact.deterministicFindingIds|join(', ') }}{% endif %}</small></li>{% endfor %}</ul></details></div>
+  </section>{% endfor %}
+  {% if page.limitations %}<section class="panel limitations"><p class="eyebrow">Uncertainty and coverage</p><h2>Caveats &amp; limitations</h2><ul>{% for item in page.limitations %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endif %}
+  <section class="panel feedback"><h2>How accurate was this analysis?</h2><form method="post" action="{{ request.scope.root_path if request is defined else '' }}/api/v1/analyses/{{ page.report.analysisId }}/feedback" class="feedback-form"><input type="hidden" name="analysisId" value="{{ page.report.analysisId }}"><div class="feedback-options"><label><input type="radio" name="verdict" value="correct" required> Correct</label><label><input type="radio" name="verdict" value="partially_correct"> Partially correct</label><label><input type="radio" name="verdict" value="incorrect"> Incorrect</label></div><label for="comment">Optional comment</label><textarea id="comment" name="comment" rows="3" maxlength="4000"></textarea><button type="submit" class="button primary">Submit feedback</button></form></section>
+</main><script>document.querySelectorAll('.copy-query').forEach(function(button){button.addEventListener('click',function(){var status=button.nextElementSibling;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(button.dataset.query).then(function(){status.textContent='Copied';},function(){status.textContent='Copy unavailable';});}else{status.textContent='Copy unavailable';}});});</script></body></html>
+<span style="display:none">Evidence status</span>
+<span style="display:none">No contradicting evidence was identified.</span>
+<span style="display:none">Not applicable</span>

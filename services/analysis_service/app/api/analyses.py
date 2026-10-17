@@ -16,6 +16,7 @@ from ..contracts.models import (
 )
 from ..orchestration.pipeline import AnalysisPipeline
 from ..reporting.renderer import TEMPLATES
+from ..reporting.view_models import recent_analysis_views, report_page_model
 
 # Contract A API Endpoint
 # Objective: Create the POST /api/v1/analyses endpoint that accepts analysis requests
@@ -42,15 +43,22 @@ def _root_path(request: Request) -> str:
     return request.scope.get("root_path", "").rstrip("/")
 
 
+def _landing_context(request: Request, **extra: Any) -> dict[str, Any]:
+    reports = request.app.state.repository.list_reports(limit=100)
+    runs = request.app.state.repository.list_runs(limit=100)
+    return {
+        "recent_analyses": recent_analysis_views(reports, runs),
+        "development": request.app.state.settings.app_env == "development",
+        **extra,
+    }
+
+
 @pages_router.get("/", response_class=HTMLResponse)
 def report_index(request: Request) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(
         request=request,
         name="index.html",
-        context={
-            "reports": request.app.state.repository.list_reports(),
-            "development": request.app.state.settings.app_env == "development",
-        },
+        context=_landing_context(request),
     )
 
 
@@ -69,12 +77,7 @@ async def run_manual_analysis(request: Request) -> Response:
         return TEMPLATES.TemplateResponse(
             request=request,
             name="index.html",
-            context={
-                "reports": request.app.state.repository.list_reports(),
-                "development": request.app.state.settings.app_env == "development",
-                "form_error": str(exc),
-                "form_values": values,
-            },
+            context=_landing_context(request, form_error=str(exc), form_values=values),
             status_code=422,
         )
     return RedirectResponse(
@@ -87,10 +90,12 @@ def get_analysis_report(analysis_id: str, request: Request) -> HTMLResponse:
     report = request.app.state.repository.get_result(analysis_id)
     if report is None:
         raise HTTPException(status_code=404, detail="Analysis report not found")
+    run = request.app.state.repository.get_run(analysis_id)
+    package = request.app.state.repository.get_package(analysis_id)
     return TEMPLATES.TemplateResponse(
         request=request,
         name="report.html",
-        context={"report": report},
+        context={"page": report_page_model(report, run, package)},
     )
 
 

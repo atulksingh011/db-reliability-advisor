@@ -91,6 +91,22 @@ class ReportFact(ContractModel):
     deterministic_finding_ids: list[str]
 
 
+class ReportRecommendedCheck(ContractModel):
+    description: str
+    purpose: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_description(cls, value: Any) -> Any:
+        return {"description": value} if isinstance(value, str) else value
+
+    def __contains__(self, value: str) -> bool:
+        return value in self.description
+
+    def startswith(self, prefix: str) -> bool:
+        return self.description.startswith(prefix)
+
+
 class Hypothesis(ContractModel):
     text: str
     confidence: Literal["low", "medium", "high"]
@@ -125,7 +141,7 @@ class ReportSection(ContractModel):
     title: str
     facts: list[ReportFact]
     hypothesis: Hypothesis
-    recommended_checks: list[str]
+    recommended_checks: list[ReportRecommendedCheck]
     limitations: list[str]
     verification: list[VerificationQuery]
     charts: list[ReportChart]
