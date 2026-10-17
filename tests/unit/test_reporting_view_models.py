@@ -1,3 +1,4 @@
+from services.analysis_service.app.reporting.renderer import TEMPLATES
 from services.analysis_service.app.reporting.view_models import report_page_model, select_metrics
 
 
@@ -357,3 +358,58 @@ def test_fallback_ai_and_root_cause_caveats_share_one_category() -> None:
     assert page["limitations"] == [
         "AI interpretation was unavailable; definitive root cause is not established."
     ]
+
+
+def test_fallback_hides_confidence_and_keeps_ai_state_out_of_trusted_summary() -> None:
+    report = _report([], [], [], [])
+    report["summary"] = (
+        "AI interpretation unavailable. Request latency increased from 200 ms to 1000 ms."
+    )
+    report["sections"][0].update(
+        {
+            "id": "SEC-1",
+            "hypothesis": {
+                "text": (
+                    "No causal hypothesis was established because AI interpretation was "
+                    "unavailable."
+                ),
+                "confidence": "low",
+                "supportingEvidenceIds": [],
+                "contradictingEvidenceIds": [],
+            },
+        }
+    )
+    page = report_page_model(
+        report,
+        run={"status": "completed_with_fallback"},
+        package={"evidence": []},
+    )
+    html = TEMPLATES.env.get_template("report.html").render(page=page)
+
+    assert page["ai_unavailable"] is True
+    assert page["trusted_summary"] == "Request latency increased from 200 ms to 1000 ms."
+    assert "AI interpretation unavailable" in html
+    assert "Confidence" not in html
+
+
+def test_ai_success_keeps_confidence_for_query_and_connection() -> None:
+    for category in ("database_query", "database_connections"):
+        report = _report([], [], [], [])
+        report["sections"][0].update(
+            {
+                "id": "SEC-1",
+                "category": category,
+                "hypothesis": {
+                    "text": "Trusted hypothesis",
+                    "confidence": "high",
+                    "supportingEvidenceIds": [],
+                    "contradictingEvidenceIds": [],
+                },
+            }
+        )
+        page = report_page_model(report, run={"status": "completed"}, package={"evidence": []})
+        html = TEMPLATES.env.get_template("report.html").render(page=page)
+
+        assert page["ai_unavailable"] is False
+        assert "Trusted hypothesis" in html
+        assert "Confidence" in html

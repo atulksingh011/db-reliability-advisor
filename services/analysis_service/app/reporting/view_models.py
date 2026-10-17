@@ -66,6 +66,19 @@ def _mock(run: dict[str, Any] | None) -> bool:
     return bool(run and run.get("fixtureName"))
 
 
+def _ai_unavailable(run: dict[str, Any] | None) -> bool:
+    return bool(run and run.get("status") == "completed_with_fallback")
+
+
+def _trusted_summary(report: dict[str, Any], ai_unavailable: bool) -> str:
+    summary = report.get("summary", "")
+    if ai_unavailable:
+        for prefix in ("AI interpretation unavailable. ", "AI interpretation was unavailable. "):
+            if summary.startswith(prefix):
+                return summary[len(prefix) :]
+    return summary
+
+
 def _condition(package: dict[str, Any] | None) -> tuple[str, str]:
     findings = (package or {}).get("deterministicFindings") or []
     for finding in findings:
@@ -330,6 +343,7 @@ def _unique(values: list[str]) -> list[str]:
 def report_page_model(
     report: dict[str, Any], run: dict[str, Any] | None = None, package: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    ai_unavailable = _ai_unavailable(run)
     sections = []
     all_limitations = list(report.get("limitations", []))
     for raw in report.get("sections", []):
@@ -358,6 +372,8 @@ def report_page_model(
         "report": report,
         "sections": sections,
         "mock_data": _mock(run),
+        "ai_unavailable": ai_unavailable,
+        "trusted_summary": _trusted_summary(report, ai_unavailable),
         "status_label": report.get("status", "unknown").replace("_", " "),
         "start_display": _display_time(window.get("startTime")),
         "end_display": _display_time(window.get("endTime")),
