@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 GATEWAY_PORT=38000
 NGROK_WEB_PORT=4040
 LOCAL_BASE_URL="http://localhost:$GATEWAY_PORT"
+LOCAL_READY_URL="$LOCAL_BASE_URL/advisor/"
 TMP_DIR="$(mktemp -d /tmp/dbadv-ngrok.XXXXXX)"
 NGROK_LOG="$TMP_DIR/ngrok.log"
 NGROK_PID=""
@@ -72,19 +73,19 @@ ngrok config check >/dev/null 2>&1 || die "ngrok configuration is invalid"
 gateway_ports="$(docker compose ps --format '{{.Service}} {{.Ports}}' demo-gateway 2>/dev/null || true)"
 [[ "$gateway_ports" == *"$GATEWAY_PORT"* ]] || die "DBADV demo-gateway does not own host port $GATEWAY_PORT"
 
-local_code="$(curl -sS -o "$TMP_DIR/local-root.html" -w '%{http_code}' --max-time 8 "$LOCAL_BASE_URL/")" || true
-if [[ "$local_code" != 200 ]] || ! grep -q 'DB Reliability Advisor' "$TMP_DIR/local-root.html"; then
+local_code="$(curl -sS -o "$TMP_DIR/local-ready.html" -w '%{http_code}' --max-time 8 "$LOCAL_READY_URL")" || true
+if [[ "$local_code" != 200 ]] || ! grep -q 'DB Reliability Advisor' "$TMP_DIR/local-ready.html"; then
   printf 'Local gateway is not ready; starting the existing Compose stack...\n'
   docker compose up -d >/dev/null
 fi
 
 deadline=$((SECONDS + 90))
 while (( SECONDS < deadline )); do
-  local_code="$(curl -sS -o "$TMP_DIR/local-root.html" -w '%{http_code}' --max-time 5 "$LOCAL_BASE_URL/")" || local_code=000
-  if [[ "$local_code" == 200 ]] && grep -q 'DB Reliability Advisor' "$TMP_DIR/local-root.html"; then break; fi
+  local_code="$(curl -sS -o "$TMP_DIR/local-ready.html" -w '%{http_code}' --max-time 5 "$LOCAL_READY_URL")" || local_code=000
+  if [[ "$local_code" == 200 ]] && grep -q 'DB Reliability Advisor' "$TMP_DIR/local-ready.html"; then break; fi
   sleep 1
 done
-[[ "$local_code" == 200 ]] || die "local gateway did not become ready at $LOCAL_BASE_URL"
+[[ "$local_code" == 200 ]] || die "local gateway did not become ready at $LOCAL_READY_URL"
 
 ngrok_api() { curl -fsS --max-time 3 "http://127.0.0.1:$NGROK_WEB_PORT/api/tunnels"; }
 
@@ -156,12 +157,16 @@ check_route() {
 }
 
 deadline=$((SECONDS + 120))
+grafana_code=000
+loki_code=000
 while (( SECONDS < deadline )); do
   grafana_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$LOCAL_BASE_URL/grafana/api/health")" || grafana_code=000
-  [[ "$grafana_code" == 200 ]] && break
+  loki_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$LOCAL_BASE_URL/loki/ready")" || loki_code=000
+  [[ "$grafana_code" == 200 && "$loki_code" == 200 ]] && break
   sleep 1
 done
 [[ "$grafana_code" == 200 ]] || die "Grafana did not become healthy after public URL configuration"
+[[ "$loki_code" == 200 ]] || die "Loki did not become ready after public URL configuration"
 
 printf '\nLocal routes\n'
 check_route "$LOCAL_BASE_URL/" root 'DB Reliability Advisor'

@@ -1,5 +1,11 @@
 from ..ai.base import AIInterpretation
-from ..contracts.models import AnalysisPackage, Hypothesis, ReportSection, ValidatedReport
+from ..contracts.models import (
+    AnalysisPackage,
+    Hypothesis,
+    ReportRecommendedCheck,
+    ReportSection,
+    ValidatedReport,
+)
 from .data_builder import TrustedReportData
 
 
@@ -77,7 +83,13 @@ class ReportAssembler:
                         supporting_evidence_ids=section.hypothesis.supporting_evidence_ids,
                         contradicting_evidence_ids=section.hypothesis.contradicting_evidence_ids,
                     ),
-                    recommended_checks=[check.description for check in section.recommended_checks],
+                    recommended_checks=[
+                        ReportRecommendedCheck(
+                            description=check.description,
+                            purpose=check.purpose,
+                        )
+                        for check in section.recommended_checks
+                    ],
                     limitations=self._limitations(section.limitations, package.missing_evidence),
                     verification=section_trusted.verification,
                     charts=section_trusted.charts,

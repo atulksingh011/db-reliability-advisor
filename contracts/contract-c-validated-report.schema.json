@@ -88,7 +88,7 @@
         "title": {"type": "string", "minLength": 1},
         "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
         "hypothesis": {"$ref": "#/$defs/hypothesis"},
-        "recommendedChecks": {"type": "array", "items": {"type": "string"}},
+        "recommendedChecks": {"type": "array", "items": {"oneOf": [{"type": "string"}, {"type": "object", "additionalProperties": false, "required": ["description"], "properties": {"description": {"type": "string"}, "purpose": {"type": ["string", "null"]}}}]}},
         "limitations": {"type": "array", "items": {"type": "string"}},
         "verification": {"type": "array", "items": {"$ref": "#/$defs/verification"}},
         "charts": {"type": "array", "items": {"$ref": "#/$defs/chart"}}

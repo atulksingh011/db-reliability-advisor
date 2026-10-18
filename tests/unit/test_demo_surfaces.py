@@ -14,6 +14,10 @@ def test_public_demo_script_is_safe_and_targets_only_gateway() -> None:
     assert "GATEWAY_PORT=38000" in text
     assert 'ngrok_args=(http "$GATEWAY_PORT"' in text
     assert 'PUBLIC_BASE_URL="$PUBLIC_URL"' in text
+    assert 'LOCAL_READY_URL="$LOCAL_BASE_URL/advisor/"' in text
+    assert '"$LOCAL_READY_URL"' in text
+    assert '"$LOCAL_BASE_URL/loki/ready"' in text
+    assert 'Loki did not become ready after public URL configuration' in text
     assert "grafana prometheus alertmanager" in text
     assert "/orders/dev/blocked" in text
     for port in ("8000", "8001", "3001", "9090", "9093", "3100"):
