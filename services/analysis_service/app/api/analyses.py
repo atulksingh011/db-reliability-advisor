@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from pydantic import ValidationError
 
 from ..adapters.loki import LokiAdapter
 from ..adapters.mongodb import MongoMetadataAdapter
@@ -46,8 +47,13 @@ def _root_path(request: Request) -> str:
 def _landing_context(request: Request, **extra: Any) -> dict[str, Any]:
     reports = request.app.state.repository.list_reports(limit=100)
     runs = request.app.state.repository.list_runs(limit=100)
+    # Only the five expanded history rows need trusted condition/metric context.
+    packages = {
+        report["analysisId"]: request.app.state.repository.get_package(report["analysisId"])
+        for report in reports[:5]
+    }
     return {
-        "recent_analyses": recent_analysis_views(reports, runs),
+        "recent_analyses": recent_analysis_views(reports, runs, packages),
         "development": request.app.state.settings.app_env == "development",
         **extra,
     }
@@ -74,10 +80,15 @@ async def run_manual_analysis(request: Request) -> Response:
         payload = AnalysisRequest.model_validate(values)
         report = _pipeline(request).run(payload)
     except (ValueError, TypeError) as exc:
+        message = (
+            "; ".join(error["msg"].removeprefix("Value error, ") for error in exc.errors())
+            if isinstance(exc, ValidationError)
+            else str(exc)
+        )
         return TEMPLATES.TemplateResponse(
             request=request,
             name="index.html",
-            context=_landing_context(request, form_error=str(exc), form_values=values),
+            context=_landing_context(request, form_error=message, form_values=values),
             status_code=422,
         )
     return RedirectResponse(
@@ -164,9 +175,18 @@ def _mock_request() -> AnalysisRequest:
     )
 
 
+def _demo_response(request: Request, fixture_name: str) -> ValidatedReport | RedirectResponse:
+    report = _pipeline(request).run(_mock_request(), fixture_name=fixture_name)
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse(
+            f"{_root_path(request)}/analyses/{report.analysis_id}/report", status_code=303
+        )
+    return report
+
+
 @dev_router.post("/query-regression", response_model=ValidatedReport)
-def run_query_regression(request: Request) -> ValidatedReport:
-    return _pipeline(request).run(_mock_request(), fixture_name="query-regression")
+def run_query_regression(request: Request) -> ValidatedReport | RedirectResponse:
+    return _demo_response(request, "query-regression")
 
 
 @live_dev_router.post("/analyses", response_model=ValidatedReport)
@@ -192,8 +212,8 @@ def run_live_analysis(payload: AnalysisRequest, request: Request) -> ValidatedRe
 
 
 @dev_router.post("/connection-pressure", response_model=ValidatedReport)
-def run_connection_pressure(request: Request) -> ValidatedReport:
-    return _pipeline(request).run(_mock_request(), fixture_name="connection-pressure")
+def run_connection_pressure(request: Request) -> ValidatedReport | RedirectResponse:
+    return _demo_response(request, "connection-pressure")
 
 
 @dev_router.post("/alertmanager", response_model=ValidatedReport)

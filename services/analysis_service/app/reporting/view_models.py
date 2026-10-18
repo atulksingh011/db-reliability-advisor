@@ -384,13 +384,16 @@ def report_page_model(
 
 
 def recent_analysis_views(
-    reports: list[dict[str, Any]], runs: list[dict[str, Any]]
+    reports: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+    packages: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     run_by_id = {item.get("analysisId"): item for item in runs}
     views = []
     for report in reports:
         run = run_by_id.get(report.get("analysisId"))
         first = (report.get("sections") or [{}])[0]
+        package = (packages or {}).get(report.get("analysisId")) or (run or {}).get("package")
         views.append(
             {
                 "report": report,
@@ -399,10 +402,8 @@ def recent_analysis_views(
                 "start_display": _display_time((report.get("window") or {}).get("startTime")),
                 "end_display": _display_time((report.get("window") or {}).get("endTime")),
                 "duration": _duration(report.get("window") or {}),
-                "condition": _condition((run or {}).get("package"))[0]
-                if run
-                else "Observed condition",
-                "metrics": select_metrics(first),
+                "condition": _condition(package)[0],
+                "metrics": select_metrics(first, package),
             }
         )
     return views

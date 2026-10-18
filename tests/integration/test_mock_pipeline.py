@@ -377,10 +377,10 @@ def test_query_fallback_report_answers_the_five_engineer_questions() -> None:
     assert section.recommended_checks[0].startswith("Inspect the affected query")
     assert "system.profile" in " ".join(item.query for item in section.verification)
     assert "NOT EXECUTED IN THIS MOCK SCENARIO" in " ".join(html.split())
-    assert "What evidence supports this?" in html
+    assert "Supporting evidence" in html
     assert all(value in html for value in ["200", "1000", "200000", "50", "IXSCAN", "COLLSCAN"])
     assert "400%" in html and "20.0" in html and "4000.0" in html
-    assert "No contradicting evidence was identified." in html
-    assert "Not applicable" in html
+    assert "No contradicting evidence was identified in the available evidence." in html
+    assert "AI interpretation unavailable" in html
     assert "Deployment: {" not in html
     assert "Evidence: ;" not in html

@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -63,6 +64,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.feedback_repository = feedback_repository
     app.state.pipeline = pipeline
     app.state.settings = runtime_settings
+    # Minimal container MIME databases do not consistently recognize web fonts.
+    mimetypes.add_type("font/woff2", ".woff2")
+    mimetypes.add_type("font/woff", ".woff")
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).parent / "reporting" / "static"),

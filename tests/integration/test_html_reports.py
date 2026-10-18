@@ -259,7 +259,7 @@ def test_report_template_renders_hypothesis_precision_copy_and_insufficient_stat
             "sections": [section],
         }
     )
-    assert "Evidence status" in insufficient
+    assert "AI interpretation unavailable" in insufficient
     assert "Likely issue" not in insufficient
     assert "Hypothesis confidence" not in insufficient
 
@@ -289,9 +289,10 @@ def test_reporting_vendor_assets_are_pinned_and_self_hosted() -> None:
     assert (
         static_dir / "vendor/bootstrap-icons/fonts/bootstrap-icons.woff2"
     ).stat().st_size > 50_000
-    assert "fonts/bootstrap-icons.woff2" in (
-        static_dir / "vendor/bootstrap-icons/bootstrap-icons.min.css"
-    ).read_text()
+    assert (
+        "fonts/bootstrap-icons.woff2"
+        in (static_dir / "vendor/bootstrap-icons/bootstrap-icons.min.css").read_text()
+    )
 
 
 def test_manual_analysis_form_redirects_to_report(monkeypatch) -> None:
@@ -335,3 +336,74 @@ def test_manual_analysis_form_reports_invalid_window(monkeypatch) -> None:
     )
     assert response.status_code == 422
     assert "startTime must be earlier than endTime" in response.text
+
+
+def test_browser_demo_redirects_without_changing_json_api(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCE_MODE", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
+    client = TestClient(app)
+    for scenario in ("query-regression", "connection-pressure"):
+        response = client.post(
+            f"/api/v1/dev/mock/{scenario}",
+            headers={"accept": "text/html", "x-forwarded-prefix": "/advisor"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/advisor/analyses/AN-")
+        assert response.headers["location"].endswith("/report")
+        api = client.post(f"/api/v1/dev/mock/{scenario}")
+        assert api.status_code == 200
+        assert api.json()["analysisId"].startswith("AN-")
+
+
+def test_manual_validation_is_readable_and_preserves_input(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCE_MODE", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="test", database_url="sqlite://", ai_provider="mock"))
+    response = TestClient(app).post(
+        "/analyses/manual",
+        data={
+            "target": "orders-api",
+            "startTime": "2026-10-18T12:00",
+            "endTime": "2026-10-18T11:00",
+        },
+    )
+    assert response.status_code == 422
+    assert "startTime must be earlier than endTime" in response.text
+    assert "input_value" not in response.text
+    assert "errors.pydantic.dev" not in response.text
+    assert 'value="2026-10-18T12:00"' in response.text
+
+
+def test_recent_history_uses_persisted_trusted_condition_and_plan(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCE_MODE", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="development", database_url="sqlite://", ai_provider="mock"))
+    client = TestClient(app)
+    client.post("/api/v1/dev/mock/query-regression")
+    landing = client.get("/").text
+    assert "Request latency regression" in landing
+    assert "IXSCAN → COLLSCAN" in landing
+    assert "/grafana/d/dbadv-mvp-overview/" in landing
+    assert "/advisor/grafana" not in landing
+    assert "report.css?v=" in landing
+
+
+def test_browser_assets_have_correct_mime_types(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCE_MODE", "mock")
+    from services.analysis_service.app.main import create_app
+
+    app = create_app(Settings(app_env="test", database_url="sqlite://", ai_provider="mock"))
+    client = TestClient(app)
+    for path, mime in (
+        ("vendor/bootstrap-icons/fonts/bootstrap-icons.woff2", "font/woff2"),
+        ("favicon.svg", "image/svg+xml"),
+        ("advisor.js", "javascript"),
+    ):
+        response = client.get(f"/static/{path}")
+        assert response.status_code == 200
+        assert mime in response.headers["content-type"]
